@@ -14,6 +14,14 @@ The repository is organized into three main folders:
 - `Matlab/`: the MATLAB implementation of mFROST and an example script.
 - `Experiments/`: all code and results for the numerical experiments conducted in R. 
 
+Before running the code, set the working directory to the corresponding folder:
+
+R experiments: use Experiments/ as the working directory when running the R scripts.
+MATLAB implementation: set MATLAB’s Current Folder to Matlab/, then run Instal.m followed by Example.m.
+Python implementation: run the Python scripts from the Python/ directory.
+
+These working directories ensure that relative paths to code and data are resolved correctly.
+
 ## mFROST for community detection 
 
 Given $L$ symmetric, nonnegative adjacency matrices $A_1,\ldots,A_L$ representing networks on the same $n$ nodes, and a prescribed number of communities $r$, mFROST jointly approximates each layer as $A_l \approx Z_l S_l Z_l^T$ by solving
@@ -54,10 +62,10 @@ The Python implementation uses:
 - `pandas`
 - `scikit-learn`
 
-`matplotlib` is also needed to generate the figures in `Example.py`.
+`matplotlib` and `networkx` are also needed to generate the figures in `Example.py`.
 
 ### Matlab implementation 
-The MATLAB implementation is provided in Matlab/, with all functions required by mFROST located in the algo/ subfolder. The main function is algo/mfrost/mfrost.m. Run Instal.m to add the required folders to the MATLAB path, then run Example.m for an example of how to use the algorithm.
+The MATLAB implementation is provided in Matlab/, with all functions required by mFROST located in the algo/ subfolder. The main function is algo/mfrost/mfrost.m. Run Install.m to add the required folders to the MATLAB path, then run Example.m for an example of how to use the algorithm.
 
 
 ## Reproduce the experiments
@@ -65,7 +73,7 @@ The synthetic experiments use the settings of Agterberg, Lubberts, and Arroyo an
 
 
 #### Method
-- *Experiments/Python/mfrost: python package for the mFROST method 
+- *Experiments/Python/mfrost*: python package for the mFROST method 
 - *Experiments/Python/graphtool-script.py*: wrapper for running graphtool method.
 - *Experiments/R/dcmase.R*: implements the degree-corrected adjacency spectral embedding.
 - *Experiments/R/comdet-dcmase.R*: implements a community detection method based on DC-MASE.
@@ -115,6 +123,7 @@ install.packages("reticulate")
 
 Python must also be installed, together with the dependencies listed in the **Python implementation** section, to run mFROST from R. Configure `reticulate` to use the Python environment containing these dependencies before running the experiments:
 
+Modify the file *Experiments/R/comdetmethods* to use mFROST in Python 
 ```r
 library(reticulate)
 use_python("/path/to/python", required = TRUE)

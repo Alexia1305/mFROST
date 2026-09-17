@@ -11,7 +11,7 @@ library(reticulate)
 use_python("/home/pistou/miniconda3/envs/mdcbm/bin/python",
            required = TRUE)
 sys <- import("sys")
-sys_path <- path.expand("~/MDCBM/Experiments/Python")
+sys_path <- sys_path <- normalizePath("Python")
 sys$path <- c(sys_path, sys$path)
 frost <- import("mfrost.mfrost")
 frost_sharedZ <- import("mfrost.mfrost_sharedZ")
