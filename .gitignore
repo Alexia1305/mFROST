@@ -15,3 +15,4 @@ results/
 /Experiments/Python/convergence_data
 /Experiments/Python/convergence_plots
 /Experiments/Python/scalability_data
+.vscode/
