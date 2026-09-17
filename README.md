@@ -1,58 +1,89 @@
-# Code for "Joint spectral clustering in multilayer degree corrected blockmodels" by Joshua Agterberg, Zachary Lubberts and Jesus Arroyo
+# Code for "Degree-Corrected Joint Matrix Factorization for
+Multilayer Community Detection" by Alexandra Dache, Manon Rustin, Nicolas Gillis and Arnaud Vandaele 
 
-This repository contains all the code required to reproduce the experiments and data analysis from the paper "Joint spectral clustering in multilayer degree corrected blockmodels". In particular, this code implements the degree-corrected multiple adjacency spectral embedding (DC-MASE) to perform community detection in multilayer networks.
+This repository contains 
+- mFROST, our method for community detection in multilayer networks implemented in Python and in Matlab 
+- all the code required to reproduce the experiments from the paper "Degree-Corrected Joint Matrix Factorization for
+Multilayer Community Detection" based on the paper "Joint spectral clustering in multilayer degree corrected blockmodels" by Joshua Agterberg, Zachary Lubberts and Jesus Arroyo from the github  jesusdaniel/dcmase  .
 
-## Overview
+folder Python => package mfrost and example.py 
+folder Matlab => folder mfrots and eaxample.py
+folder Experiments
 
-Given a collection of *L* adjacency matrices representing graphs with $n$ aligned vertices (e.g., multilayer networks), DC-MASE obtains a joint embedding matrix with n rows, where each row corresponds to a vertex in the networks. After this, communities are obtained by applying a clustering procedure (such as K-means) to partition the latent positions into K groups in order to estimate the memberships in the multilayer degree-corrected stochastic block model. 
 
-The joint embedding is calculated by performing a separate *adjacency spectral embedding*  (ASE) for each graph, which consists in computing the eigendecomposition of each adjacency matrix, with a possible eigenvalue scaling, followed by a row-normalization step (such as dividing the rows by its L2 norm), and then performs a joint singular value decomposition of the concatenated row-normalized ASEs. A pictorial representation is presented below.
+## mFROST for community detection 
 
-![dc-mase embedding](https://github.com/jesusdaniel/dcmase/blob/main/img/DC-MASE2.png?raw=true)
+Given a list of  *L*  adjacency matrices representing graphs defined over the same nodes (cf multilayer networks) and the number of communities *r* we are looking for,
 
-# Data
-The networks encode weighted edges representing the monthly number of flights between pairs of US airports. These data were obtained from the [T-100 Segment (US Carriers Only)](https://www.transtats.bts.gov/Fields.asp?gnoyr_VQ=GEE) database US Bureau of Transportation Statistics (BTS). A post-processed version of this dataset is included in this repository. The DC-MASE algorithm is illustrated using these data.
+mFROST aims to solve the following joint optimization problem:
+$$
+\min_{D_l \geq 0,V\geq 0, S \geq 0} \sum_{l=1}^L||A_l - Z_lS_lZ_l^T||_F^2 \quad \text{s.t.} \quad Z_l^TZ_l = I, Z_l=D_lV
+$$
 
-<img src="https://github.com/jesusdaniel/dcmase/blob/main/Figures/USmap-K4-dcmase.png" height="400" />
-<img src="https://github.com/jesusdaniel/dcmase/blob/main/Figures/Bmatrices-K4-dcmase.png" height="400" />
-<img src="https://github.com/jesusdaniel/dcmase/blob/main/Figures/degreecorrections-K4-dcmase.png" height="400" />
+Where:
+- **A_l** is a given symmetric nonnegative matrix of size $n \times n$  (e.g., the adjacency matrix of the layer $l).
+- **Z_l** is a $n \times r$ matrix encoding the assignment of each node into **r** communities, where $Z(i,k) \neq 0$ if node $i$ belongs to community $k$.
+- The constraint $Z_l=D_V imposes that the community assignments are the same across layers but the values of Z_l can change between layers to handle degree heterogeneity across layers (cf paper) 
+- **S_l** is a $r\times r$ central matrix describing interactions between communities in the layer $l$.
 
-## File overview section
+The algorithm is implemented in Python and matlab 
+
+### Python implementation 
+folder Python
+An example script demonstrating how to use the `FROST` function is included in the script`Example.py`.
+
+
+package mfrost inthe folder python\mfrost
+to use it we recommend python > 3.12
+To install the dependencies requirements.txt file 
+mFROST required the librairies below: 
+
+numpy
+scipy
+pandas
+scikit-learn
+(matplotlib) for the Figures in Example.py  
+
+### Matlab implementation 
+folder algo/ mfrost/mfrost.m 
+An example script demonstrating how to use the `FROST` function is included in the script`Example.m`.
+
+
+## Reproduce the experiments
+The experiments are based on the paper "Joint spectral clustering in multilayer degree corrected blockmodels" by Joshua Agterberg, Zachary Lubberts and Jesus Arroyo from the github  jesusdaniel/dcmase  .
+We kepts the same settings for the synthetics experiments and added real-world multilayer networks. 
+
+
+### File overview section
 The folder contains scripts to implement the methods, implement the experiment, run the experiments and generate figures, and additional files containing the results of the experiments. Descriptions of each file are listed below.
 
-### Method
+#### Method
+- *Python/mfrost: python package for the mFROST method 
+- *Python/graphtool-script.py*: wrapper for running graphtool method.
 - *R/dcmase.R*: implements the degree-corrected adjacency spectral embedding.
 - *R/comdet-dcmase.R*: implements a community detection method based on DC-MASE.
 - *R/comdetmethods.R*: code implementation of alternative methods for multilayer community detection (including method by Paul and Chen (2020) contained in *R/Codes_Spectral_Matrix_Paul_Chen_AOS_2020.r*, and the method from the Python package graphtool, which is called via the script *R/run_graph_tool.R*)
 - *R/SpectralMethods.R* and *R/getElbows.R*: contain auxiliary functions to perform spectral embeddings.
 - *R/make_ggplot.R* and *R/make_dcsbm_plots.R*: implement functions to create plots from experiments.
 
-### Experiments
+#### Experiments
 - *Experiments/run_all_methods.R*: wrapper functions for generating simulated data and running all community detection methods on these simulations
-- *Experiments/simulations sparsity.R*: wrapper for data generation in simulations as function of network sparsity (Supplementary Materials of the paper)
-- *Experiments/extrasimulations.R*: wrapper for data generation in additional simulations (Supplementary Materials of the paper)
+- *Experiments/simulations sparsity.R*: wrapper for data generation in simulations as function of network sparsity 
 
-### Code to generate figures
-- *Main - simulations.R*: Run simulation experiments from Section 4 of the paper and generates Figure 4.1. Approximate running time: less than 20 minutes running in parallel on 10 nodes.
-- *Main - US airport data analysis.R*: Run data analysis from Section 5 of the paper and generates Figures 5.1 and 5.2. Approximate running time: less than 30 seconds.
-- *Supplement - Simulations sparsity.R*: Run simulation experiments from Section I of the supplementary materials and generates Figure I.1.
-- *Supplement - Single clustering comparison.R*: Run simulation experiments from Section H of the paper and generates Figure H.1. 
-- *Supplement - Spherical scaled vs unscaled.R*: Run simulation experiments from Section H of the paper and generates Figure H.2. 
-- *Supplement - US airport out of sample error.R*: Run data experiments from Section J of the paper and generates Figure J.1.
 
-### Other files
-- *Experiments/Results-allmethods-rep100-miscerror.RData*: Results to generate Figure 4.1 of the paper.
-- *Experiments/Results-allmethods-rep100-sparsity.RData*: Results to generate Figure I.1 of the supplementary materials..\
-- *Python/graphtool-script.py*: wrapper for running graphtool method.
+#### Code to generate figures
+- *Main - simulations.R*: Run simulation experiments for Figure 2 of the paper. 
+- *Supplement - Simulations sparsity.R*: Run simulation experiments for Figure 3 of the paper. 
 
-## Requirements
+
+#### Requirements
 
 To run this project successfully, ensure you have the following:
 
-### R Version
+##### R Version
 - R (>= 4.2.1)
 
-### Required R Packages
+##### Required R Packages
 Several packages are required to run the code and generate the figures. These are listed below, including the version of each package that was used. To install these versions, run the following code.
 The code requires the package listed below, and was run using the versions
 
@@ -69,42 +100,14 @@ remotes::install_version("ggthemes", version = "4.2.4")
 remotes::install_version("maps", version = "3.4.0")
 remotes::install_version("mapdata", version = "2.3.0")
 remotes::install_version("parallel", version = "4.1.1")
+
+# Interface between R and Python !!! 
+install.packages("reticulate")
 ```
-
-## Data Access
-
-This project includes access to publicly available data.  The following datasets are openly accessible and included in this repository:
-
-### **Available Dataset**
-- **Name:** US airport network (2016-2021)
-- **Format:** RData
-- **Location:** `Data/US_airport_data.RData`
-- **Description:** This dataset contains weighted adjacency matrices representing the monthly number of flights between US airports. The data was obtained from the T-100 Segment (US Carriers Only) database of the US Bureau of Transportation Statistics (BTS).
-- **Contents:**
-  - `Adj_list`: A list of 69 adjacency matrices, where each matrix represents flights for a given month.
-  - `airport_coordinates`: A 343×2 matrix with latitude and longitude of each airport (for visualization).
-  - `airport_names`: A vector of airport codes matching the order in `Adj_list`.
-
-Example code to load the data in R and fit 4 communities.
-
-```{r}
-source("R/dcmase.R")
-source("R/comdet-dcmase.R")
-source("R/SpectralMethods.R")
-source("R/make_dcsbm_plots.R")
-
-load("Data/US_airport_data.RData")
-
-# Symmetrize networks (total number of flights between locations)
-Adj_list <- lapply(Adj_list, function(A) ((A+t(A))))
-
-# Fit a 4-community multilayer DCSBM
-comdcmase.res <- comdet_dcmase(Adj_list, K = 4, clustering_method = "kmeans", scaled = T)
-
-# Plot map with airports colored by community
-plot_usmap(comdcmase.res$community_memberships)
-```
+Python must also be installed, along with the libraries listed in the Python implementation section if you want to use mFROST.
 
 # References
+ TO DO : add our paper 
+if you reproduce the synthetics experiments, please cite :
 Agterberg, J., Lubberts, Z., & Arroyo, J. (2025). Joint spectral clustering in multilayer degree-corrected stochastic blockmodels. Journal of the American Statistical Association, (just-accepted), 1-23. 
 [![arXiv shield](https://img.shields.io/badge/arXiv-2212.05053-red.svg?style=flat)](https://arxiv.org/abs/2212.05053)

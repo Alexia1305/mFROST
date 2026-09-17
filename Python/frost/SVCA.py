@@ -4,6 +4,16 @@ from scipy.sparse.linalg import svds
 from scipy.sparse import issparse
 from scipy.sparse import csc_matrix
 
+'''
+Smooth-separable NMF methods used our initialization procedure in mFROST
+to find initial node partition in each layer 
+
+ This code is based on the paper Smoothed Separable Nonnegative Matrix Factorization
+by N. Nadisic, N. Gillis, and C. Kervazo
+https://arxiv.org/abs/2110.05528
+
+'''
+
 
 def update_orth_basis(V, v):
     """

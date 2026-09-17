@@ -14,6 +14,7 @@ sys <- import("sys")
 sys_path <- path.expand("~/MDCBM/Python")
 sys$path <- c(sys$path, sys_path)
 frost <- import("frost.frost_multilayer")
+frost_sharedZ <- import("frost.frost_multilayer_sharedZ")
 np <- import("numpy")
 source("R/Codes_Spectral_Matrix_Paul_Chen_AOS_2020.r")
 source("R/comdet-dcmase.R")
@@ -21,6 +22,24 @@ source("R/dcmase.R")
 source("R/SpectralMethods.R")
 source("R/run_graph_tool.R")
 
+# Regularized normalization function for one adjacency matrix
+normalize_adj <- function(A, tau = NULL, tau_frac = 1) {
+  A <- as.matrix(A)
+  d <- rowSums(A)                 # degrees (assumes A is symmetric)
+  
+  if (is.null(tau)) {
+    tau <- tau_frac * mean(d)     # average-degree rule: tau = mean(d)
+  }
+  
+  d_reg <- d + tau
+  D_inv_sqrt <- 1 / sqrt(d_reg)   # vector, not the full matrix
+  
+  # A_tilde[i,j] = A[i,j] / sqrt(d_reg[i] * d_reg[j])
+  A_tilde <- sweep(A, 1, D_inv_sqrt, "*")
+  A_tilde <- sweep(A_tilde, 2, D_inv_sqrt, "*")
+  
+  A_tilde
+}
 
 
 comdetmethods <- function(Adj_list, K, method) {
@@ -140,20 +159,9 @@ comdetmethods <- function(Adj_list, K, method) {
     community_memberships <- kmeans(V/rownorms, K, nstart = 100)$cluster
   }
    #################################################################################
-    if (method=="frost-mf"){
-      
-      seed_for_python <- sample.int(.Machine$integer.max, 1)
-      
-      Adj_list_numpy <- lapply(Adj_list, function(X) np$array(as.matrix(X)))
-      X_list <- r_to_py(Adj_list_numpy)
     
-      res <- frost$frost_multilayer(X_list, K, init_method='MF-SC-CA',init_seed=seed_for_python,numTrials=3L,time_limit=1000)
-      labels <- py_to_r(res[[2]])
-      community_memberships <- as.vector(labels + 1)
-       
-    }
 
-    if (method=="frost-us"){
+    if (method=="mfrost"){
       seed_for_python <- sample.int(.Machine$integer.max, 1)
       
       Adj_list_numpy <- lapply(Adj_list, function(X) np$array(as.matrix(X)))
@@ -163,7 +171,7 @@ comdetmethods <- function(Adj_list, K, method) {
       labels <- py_to_r(res[[2]])
       community_memberships <- as.vector(labels + 1)
     }
-
+   # Initialized by DC_MASE
     if (method=="frost-dcmase"){
      
       community_memberships <- comdet_dcmase(Adj_list, K, "kmeans")$community_memberships
@@ -177,31 +185,35 @@ comdetmethods <- function(Adj_list, K, method) {
       labels <- py_to_r(res[[2]])
       community_memberships <- as.vector(labels + 1)
     }
-    if (method=="mf"){
-      
+    
+      if (method=="frost-sharedZ-Anorm"){
       
       seed_for_python <- sample.int(.Machine$integer.max, 1)
       
-      Adj_list_numpy <- lapply(Adj_list, function(X) np$array(as.matrix(X)))
+      # Apply to each layer, with a layer-specific tau (recommended in the multilayer setting)
+      Adj_list_norm <- lapply(Adj_list, function(A) normalize_adj(A))
+
+      # Then convert to numpy as before
+      Adj_list_numpy <- lapply(Adj_list_norm, function(X) np$array(as.matrix(X)))
       X_list <- r_to_py(Adj_list_numpy)
-     
-      res <- frost$frost_multilayer(X_list, K, maxiter=as.integer(0), init_method='MF-SC-CA',init_seed=seed_for_python)
+    
+      res <- frost_sharedZ$frost_multilayer_sharedZ(X_list, K, init_method='MF-SC-CA',init_seed=seed_for_python,numTrials=3L,time_limit=1000)
       labels <- py_to_r(res[[2]])
       community_memberships <- as.vector(labels + 1)
-      }
-      if (method=="us"){
-      
+       
+    }
+    if (method=="frost-sharedZ"){
       
       seed_for_python <- sample.int(.Machine$integer.max, 1)
       
       Adj_list_numpy <- lapply(Adj_list, function(X) np$array(as.matrix(X)))
       X_list <- r_to_py(Adj_list_numpy)
-
-          
-      res <- frost$frost_multilayer(X_list, K, maxiter=as.integer(0),init_method='USENC',init_seed=seed_for_python)
+    
+      res <- frost_sharedZ$frost_multilayer_sharedZ(X_list, K, init_method='MF-SC-CA',init_seed=seed_for_python,numTrials=3L,time_limit=1000)
       labels <- py_to_r(res[[2]])
-      community_memberships <- as.vector(labels + 1) 
-      }
+      community_memberships <- as.vector(labels + 1)
+       
+    }
 
   return(community_memberships)
 }
@@ -342,7 +354,7 @@ allmethods <- function(Adj_list, K, method) {
       Adj_list_numpy <- lapply(Adj_list, function(X) np$array(as.matrix(X)))
       X_list <- r_to_py(Adj_list_numpy)
       
-      res <- frost$frost_multilayer(X_list, K, init_method='USENC',init_seed=seed_for_python,numTrials=50L,time_limit=1000)
+      res <- frost$frost_multilayer(X_list, K, init_method='USENC',init_seed=seed_for_python,numTrials=10L,time_limit=1000)
       labels <- py_to_r(res[[2]])
       community_memberships <- labels + 1
     }

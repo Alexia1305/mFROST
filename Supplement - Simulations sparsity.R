@@ -242,7 +242,7 @@ different_scenarios_metric <- different_scenarios %>%
 png("Simulation-rep100-6scenarios-flipped.png", width = 1200, height = 1500, res = 200)
 
 
-p <- make_ggplot_multipleBT2(different_scenarios_metric, "Edge density", xbreaks = c(0.01,0.04,0.07,0.10,0.13,0.16), metric,methodnames = c("FROST","OLMF","DC-MASE","graph-tool","Sum A","Bias-adjusted SoS","MASE"),ylim = c(0,0.6))#, "graph-tool"))
+p <- make_ggplot_multipleBT2(different_scenarios_metric, "Edge density", xbreaks = c(0.01,0.04,0.07,0.10,0.13,0.16), metric,methodnames = c("mFROST","OLMF","DC-MASE","graph-tool","Sum A","Bias-adjusted SoS","MASE"),ylim = c(0,0.7))#, "graph-tool"))
 ggsave(
   filename = "simulations.png",
   plot = p,              # ton objet ggplot

@@ -16,10 +16,10 @@ library(dplyr)
 
 num_nodes <- 150
 K <- 3
-degree_distribution <- "pow" # "exp" for exponnential or "pow" for power distribution 
+degree_distribution <- "exp" # "exp" for exponnential or "pow" for power distribution 
 num_replications <- 100
-#num_layers <- list(1,2,3,5,7,10,15,20,30,40,50)
-num_layers <- list(1)
+num_layers <- list(1,2,3,5,7,10,15,20,30,40,50)
+
 
 parameters_list <- num_layers
 param_iter = parameters_list
@@ -222,7 +222,7 @@ different_scenarios$scenarioB <- factor(different_scenarios$scenarioB,
                                        levels = c("Same θ", "Different θ"))
 different_scenarios$scenarioT <- factor(different_scenarios$scenarioT,
                                         levels = c("Same D", "Different D", "Alternating D"))
-save(different_scenarios, file = "Results-testcompletepower.RData")
+save(different_scenarios, file = "Results-testcomplete.RData")
 
 source("R/make_ggplot.R")
 #######################################
@@ -243,7 +243,7 @@ different_scenarios_metric <- different_scenarios %>%
 png("Simulation-rep100-6scenarios-flipped.png", width = 1200, height = 1500, res = 200)
 
 
-p <- make_ggplot_multipleBT2(different_scenarios_metric, "Number of graphs", xbreaks = c(1,10,20,30,40,50), metric,methodnames = c("FROST","OLMF","DC-MASE","graph-tool","Sum A","Bias-adjusted SoS","MASE"),ylim = c(0,0.6))#, "graph-tool"))
+p <- make_ggplot_multipleBT2(different_scenarios_metric, "Number of layers", xbreaks = c(1,10,20,30,40,50), metric,methodnames = c("mFROST","OLMF","DC-MASE","graph-tool","Sum A","Bias-adjusted SoS","MASE"),ylim = c(0,0.6))#, "graph-tool"))
 ggsave(
   filename = "simulations.png",
   plot = p,              # ton objet ggplot

@@ -105,7 +105,7 @@ make_ggplot_multipleBT2 <- function(different_scenarios,
                                     parameter_name, 
                                     xbreaks = c(1, 5, 10, 15, 20, 25),
                                     metric = "ARI",
-                                    methodnames = c("FROST_MF","FROST_US","MF","US","DC-MASE", "Sum A", "Sum A^2 bias adj.", "MASE", "OLMF", "graph-tool","LMFO"),
+                                    methodnames = c("mFROST","DC-MASE", "Sum A", "Bias-adjusted SoS", "MASE", "OLMF", "graph-tool","OLMF"),
                                     ylim = c(0,1)) {
   # Packages nécessaires
   require(ggplot2)
@@ -183,7 +183,8 @@ make_ggplot_multipleBT2 <- function(different_scenarios,
     scale_color_manual(labels = methodnames_valid, values = colors) +
     scale_shape_manual(labels = methodnames_valid, values = shapes) +
     scale_linetype_manual(labels = methodnames_valid, values = linetypes) +
-    theme(legend.position = "top", legend.text.align = 0,, panel.spacing = unit(0.3, "cm"))
+    theme(legend.position = "top", legend.text.align = 0, panel.spacing = unit(0.5, "cm"), legend.title = element_blank(),axis.text = element_text(size = 10),axis.title=element_text(size=11),
+  legend.text = element_text(size = 11),strip.text = element_text(size = 11))
   
   return(p)
 }

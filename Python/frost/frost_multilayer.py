@@ -2,17 +2,13 @@
 import time
 from scipy.sparse import issparse, find, csr_matrix
 from scipy.sparse.linalg import norm
-from sklearn.cluster import KMeans, SpectralClustering
-from sklearn.metrics import normalized_mutual_info_score
+from sklearn.metrics import normalized_mutual_info_score,adjusted_rand_score
 
-from frost.aggregation_way.co_association import clustering_coassociation, MatrixFreeSpectralClusteringCoAssociation, \
-    USENC_ConsensusFunction
-from frost.aggregation_way.QR_embeddings import clustering_QR_embeddings, nmf_consensus, consensus_kmeans
+from frost.consensus import MatrixFreeSpectralClusteringCoAssociation, USENC_ConsensusFunction
 import numpy as np
 import math
 from .SVCA import svca
 from scipy.sparse import diags
-
 
 # import Cluster_Ensembles as CE
 
@@ -21,30 +17,29 @@ from scipy.sparse import diags
 # ---------------- frost ----------------
 # -----------------------------------------------
 
-def frost_multilayer(X_list, r, numTrials=3, maxiter=1000, delta=1e-6, time_limit=300, init_method='MF-SC-CA', init_w=None,
-                     power_method=False, init_partition=None, verbosity=0,
-                     init_seed=None, true_labels=None):
+def frost_multilayer(X_list, r, numTrials=10, maxiter=50, delta=1e-6, time_limit=None, init_method='USENC',
+                     init_partition=None, verbosity=0, init_seed=None, convergence_test=False ,true_labels=None):
     """
     Heuristic algorithm for multilayer community detection via joint nonnegative matrix trifactorization.
-    Estimates nonnegative matrices S_l>=0 and W_l>=0 that minimize:
+    Estimates nonnegative matrices S_l>=0 and Z_l>=0 that minimize:
 
-        sum_{l=1..L} ||X_l-W_l S_l W_l^T||_F^T
+        sum_{l=1..L} ||X_l-Z_l S_l Z_l^T||_F^T
 
     subject to the constraints:
-        W_l = D_l V
-        W_l^T W_l = I
+        Z_l = D_l V
+        Z_l^T Z_l = I
         S_l >= 0
-        W_l >= 0
+        Z_l >= 0
     where:
     - X_l is the adjacency matrix of layer l
     - S_l is a nonnegative community interaction matrix for layer l
-    - W_l is a nonnegative structured orthogonal matrix encoding community memberships
+    - Z_l is a nonnegative orthogonal matrix encoding community memberships
     - D_l is a diagonal scaling matrix specific to layer l
     - V is a shared binary community assignment matrix across all layers
 
     Notes
     -----
-    The matrices W_l=D_l V are not stored explicitly but represented with:
+    The matrices Z_l=D_l V are not stored explicitly but represented with:
 
     - v : ndarray of shape (n,) — layer-independent community assignments defining V,
       where v[i] is the community index of node i.
@@ -52,9 +47,9 @@ def frost_multilayer(X_list, r, numTrials=3, maxiter=1000, delta=1e-6, time_limi
     - w : ndarray of shape (L, n) — layer-dependent diagonal values defining D_l,
       where w[l, i] is the scaling factor for node i in layer l.
 
-    Thus, each row i of W_l has a single nonzero element:
+    Thus, each row i of Z_l has a single nonzero element:
 
-        W_l[i, v[i]] = w[l, i]
+        Z_l[i, v[i]] = w[l, i]
 
     The vector v is shared across layers, while w is layer-dependent.
 
@@ -65,38 +60,44 @@ def frost_multilayer(X_list, r, numTrials=3, maxiter=1000, delta=1e-6, time_limi
              - Matrices are nonnegative and symmetric for adjacency matrix of an undirected graphs.
          r : int
              Number of communities.
-         numTrials : int, default=1
-             Number of trials with different initializations.
-         maxiter : int, default=1000
+         numTrials : int, default=10
+             Number of restarts with different initializations.
+         maxiter : int, default=50
              Maximum iterations for each trial.
-         delta : float, default=1e-7
-             Convergence tolerance (Stop if error<delta or error_prec-error<delta).
-         time_limit : int, default=300
+         delta : float, default=1e-6
+             Convergence tolerance (Stop if error_prec-error<delta).
+         time_limit : int, default=None
              Time limit in seconds.
-         init_method : str, default=SVCA
-             Initialization method ("random", "SVCA").
+         init_method : str, default = USENC
+             Initialization method ("random", "USENC").
          verbosity : int, default=1
              (1 for messages, 0 for silent mode).
-         init_seed : float, optional (default=None)
+         init_partition : np.array, shape (n,), default=None
+            Initial node partition 
+         convergence_test : Boolean, default=False
+            To return metrics for each iteration for convergence test
+         true_labels: np.array, shape (n,)
+            To compute NMI for each iteration for convergence test
+         init_seed : float, default=None
              Random seed for the initialization for the experiments
+
 
      Returns:
          w_best : ndarray of shape (L, n)
-            Layer-specific nonzero values of W_l (diagonal elements of D_l).
+            Layer-specific nonzero values of Z_l (diagonal elements of D_l). w_best[i,l] is the sociability of the node i in the layer l
          v_best : np.array, shape (n,)
              Shared community assignment vector. v_best[i] is the community of node i.
          S_best : ndarray of shape (L, r, r)
              Layer-specific community interaction matrices S_l.
          error_best : float
-             Relative error ||X - ZSZ'||_F / ||X||_F.
-         time_per_iteration : list[list[float]]
-             Time per iteration for each trial.
-             Each inner list contains the times (in seconds) for every iteration
-             of that specific trial.
+             Relative error sum_l ||X_l - Z_l S_l Z_l'||_F / ||X_l||_F.
+         (convergence_data) if convergence_test
      """
-    errors = []
+    
+    convergence_data = []
     start_time = time.time()
-    # Only one layer must be in a list
+
+    # List of adjacency matrices 
     if (isinstance(X_list, np.ndarray) or issparse(X_list)) and X_list.ndim == 2 and X_list.shape[0] == X_list.shape[1]:
         X_list = [X_list]
 
@@ -104,10 +105,11 @@ def frost_multilayer(X_list, r, numTrials=3, maxiter=1000, delta=1e-6, time_limi
         raise TypeError("Xlist must be a Python list")
 
     X_list = [csr_matrix(X).astype('float') if not issparse(X) else X.tocsr().astype('float') for X in X_list]
+
+   # Instances initialization
     L = len(X_list)
     n = X_list[0].shape[0]
     error_best = float('inf')
-
 
     w_best = np.zeros((L, n))
     S_best = np.zeros((L, r, r))
@@ -125,9 +127,18 @@ def frost_multilayer(X_list, r, numTrials=3, maxiter=1000, delta=1e-6, time_limi
     if verbosity > 0:
         print(f'Running {numTrials} Trials in Series')
 
+    # Restarts with different initialization   
+
     for trial in range(numTrials):
+        # Metrics for convergence tests 
+        if convergence_test:
+            trial_results = {"time": [], "error": [], "Z_change": [], "n_changed": [], "NMI":[], "ARI":[]}
+            start_trial=time.time()
+
+        # Initialization of Z_l stored by v and w
         if init_partition is not None:
-            v=init_partition.copy()
+            #v=init_partition.copy()
+            v = np.ones(n, dtype=int)
             w = np.zeros((L, n))
             for l in range(L):
                 w[l] = initialize_w_values(X_list[l], v)
@@ -155,7 +166,7 @@ def frost_multilayer(X_list, r, numTrials=3, maxiter=1000, delta=1e-6, time_limi
             elif init_method == 'onelayer':
                 w = np.zeros((L, n))
                 lr = np.random.randint(0, L)  # Choose a random layer
-                w[lr], v, _ = initialize_W_onelayer(X_list[lr], r)
+                w[lr], v, _ = initialize_Z_onelayer(X_list[lr], r)
                 # default value degree of the node / sum degrees same community
                 for l in range(L):
                     if l == lr:
@@ -167,9 +178,9 @@ def frost_multilayer(X_list, r, numTrials=3, maxiter=1000, delta=1e-6, time_limi
 
             else:
 
-                w, v = initialize_W_alllayers(X_list, r, init_method, init_w, power_method)
+                w, v = initialize_Z_alllayers(X_list, r, init_method)
 
-        # Normalization of W
+        # Normalization of Z (w)
         for l in range(L):
             nw = np.zeros(r)
             for i in range(n):
@@ -185,23 +196,35 @@ def frost_multilayer(X_list, r, numTrials=3, maxiter=1000, delta=1e-6, time_limi
         S = update_S(X_list, r, w, v)
 
         if verbosity:
-            if true_labels is not None:
-                print('NMI initialisation : ', normalized_mutual_info_score(true_labels, v))
             print('Time', time.time() - start_time)
         prev_error = 0
         for l in range(L):
             prev_error += compute_error(normX[l], S[l])
         prev_error=prev_error/sum(normX)
         error = prev_error
-        init_error = (error)
 
-        errors.append(init_error)
+        if convergence_test:
+                        trial_results["error"].append(error)
+                        trial_results["Z_change"].append(None)
+                        trial_results["n_changed"].append(None)
+                        trial_results["time"].append(time.time()-start_trial)
+                        if true_labels is not None:
+                            indices = np.where(~np.isnan(true_labels))[0]
+                            trial_results["NMI"].append(normalized_mutual_info_score(v[indices],true_labels[indices]))
+                            trial_results["ARI"].append(adjusted_rand_score(v[indices],true_labels[indices]))
+
+        
+    
         for iteration in range(maxiter):
-            if time.time() - start_time > time_limit:
+           
+            if time_limit and time.time() - start_time > time_limit:
                 print('Time limit passed')
                 break
+            
+            if convergence_test:
+                prec_w, prec_v= w.copy(),v.copy()
 
-            w, v = update_W(X_list,degrees_layers, S, w, v)
+            w, v = update_Z(X_list,degrees_layers, S, w, v)
 
             S = update_S(X_list, r, w, v)
 
@@ -210,28 +233,42 @@ def frost_multilayer(X_list, r, numTrials=3, maxiter=1000, delta=1e-6, time_limi
             for l in range(L):
                 error += compute_error(normX[l], S[l])
             error=error/sum(normX)
-            
 
-            if error < delta or abs(prev_error - error) < delta:
-                break
+            if convergence_test:
+                trial_results["error"].append(error)
+                trial_results["Z_change"].append(compute_diff_Z(w,v,prec_w,prec_v))
+                trial_results["n_changed"].append(np.mean(v != prec_v))
+                trial_results["time"].append(time.time()-start_trial)
+                if true_labels is not None:
+                    indices = np.where(~np.isnan(true_labels))[0]
+                    trial_results["NMI"].append(normalized_mutual_info_score(v[indices],true_labels[indices]))
+                    trial_results["ARI"].append(adjusted_rand_score(v[indices],true_labels[indices]))
+
+            if delta:
+                if error < delta or abs(prev_error - error) < delta:
+                    break
 
         if error < error_best:
             w_best, v_best, S_best, error_best = (
                  w.copy(), v.copy(), S.copy(), error
             )
+        if convergence_test:
+            convergence_data.append(trial_results)
 
         if verbosity > 0:
             print(f'Trial {trial + 1}/{numTrials} with {init_method}: Error {error:.4e} | Best: {error_best:.4e}')
-            if true_labels is not None:
-                print('NMI : ', normalized_mutual_info_score(true_labels, v_best))
             print('Time', time.time() - start_time)
-        if time.time() - start_time > time_limit:
+            
+        if time_limit and time.time() - start_time > time_limit:
                 print('Time limit passed')
                 break
+    if convergence_test:
+        return w_best, v_best, S_best, error_best,convergence_data
+    else:
 
-    return w_best, v_best, S_best, errors
+        return w_best, v_best, S_best, error_best
 
-def update_W(X_list, degrees_layers, S, w, v):
+def update_Z(X_list, degrees_layers, S, w, v):
     L = len(X_list)
     n = X_list[0].shape[0]
     r = S.shape[1]
@@ -252,66 +289,80 @@ def update_W(X_list, degrees_layers, S, w, v):
     for i in np.random.permutation(n):
         vi_new = -1
         wi_new = np.full(L, -1)
-        wi = np.zeros((L, n))
         f_new = np.inf
+        wi = np.empty(L)
+
+
+        # Pre computation to avoid loop on k (only depends of i and l)
+
+        neighbors = []
+        neighbor_vals = []
+        c0_all_layers = []
+
+        
+        for l in range(L):
+            X = X_list[l]
+
+            start = X.indptr[i]
+            end = X.indptr[i + 1]
+
+            cols = X.indices[start:end]
+            vals = X.data[start:end]
+
+            mask = cols != i
+
+            selected_cols = cols[mask]
+            selected_vals = vals[mask]
+
+            neighbors.append(selected_cols)
+            neighbor_vals.append(selected_vals)
+
+            weights = selected_vals * w[l, selected_cols]
+
+            c0_all = -4 * (
+                weights @ S[l, v[selected_cols], :]
+            )
+
+            c0_all_layers.append(c0_all)
 
 
         # Test each community
         for k in range(r):
-            wi = w.copy()
-            vi = v.copy()
-            vi[i] = k
+            
             erreur = 0
             # For each layer, find the best value for w[i] with v[i] = k
             for l in range(L):
                 if degrees_layers[l][i]==0 :
-                    wi[l][i] = 0
+                    wi[l] = 0
                 else:
                     c3 = S2[l, k, k]
                     c1 = 2 * (wp2[l, k] - (w[l, i] * S[l, v[i], k]) ** 2) - 2 * S[l, k, k] * Xii[l, i]
-                    X = X_list[l]
-                    start = X.indptr[i]
-                    end = X.indptr[i + 1]
 
-                    cols = X.indices[start:end]
-                    vals = X.data[start:end]
+        
+                    c0 = c0_all_layers[l][k]
 
-                    mask = cols != i
-                    selected_cols = cols[mask]
-                    selected_vals = vals[mask]
+                    # Cardano method to find the roots and return best solution >=0 
+                    x, min_value = cardan_depressed(4 * c3, 2 * c1, c0)
 
-                    c0 = -4 * np.sum(selected_vals * w[l, selected_cols] * S[l, v[selected_cols], k])
-
-                    # Résolution des racines avec la méthode de Cardan
-                    roots = cardan_depressed(4 * c3, 2 * c1, c0)
-
-                    # Trouver la meilleure solution positive pour w_l(i, k_i)
-                    x = 0
-                    min_value = c3 * (x ** 4) + c1 * (x ** 2) + c0 * x
-                    for sol in roots:
-                        value = c3 * (sol ** 4) + c1 * (sol ** 2) + c0 * sol
-                        if sol > 0 and value < min_value:
-                            x, min_value = sol, value
-
-                    wi[l][i] = x
+                    wi[l] = x
 
                     erreur += min_value
 
             if erreur < f_new:
                 f_new = erreur
-                wi_new = wi[:, i].copy()
+                wi_new = wi[:].copy()
                 vi_new = k
 
         for l in range(L):
             for k in range(r):
                 wp2[l, k] = wp2[l, k] - (w[l, i] * S[l, v[i], k]) ** 2 + (wi_new[l] * S[l, int(vi_new), k]) ** 2
 
-        # Mise à jour des valeurs de v et w
+        # Update v and w
         v[i] = vi_new
         for l in range(L):
             w[l, i] = wi_new[l]
 
-    # Normalization of W
+    # Normalization of Z (w)
     for l in range(L):
         nw = np.zeros(r)
         for i in range(n):
@@ -328,30 +379,46 @@ def update_W(X_list, degrees_layers, S, w, v):
 
 def cardan_depressed(a, c, d, tol=1e-12):
     """ Cardano formula to find the roots of ax^3+cx+d=0 """
+    roots=[]
     if abs(a) < tol:
-        if abs(c) < tol:
-            return []
-        else:
-            return [-d / c]
+        if abs(c) > tol:
+            roots.append(-d / c)
+    else:
 
-    # b=0 t^3+pt+q
-    p = c / a
-    q = d / a
-    Delta = 4 * (p ** 3) + 27 * (q ** 2)
+        # b=0 t^3+pt+q
+        p = c / a
+        q = d / a
+        Delta = 4 * (p ** 3) + 27 * (q ** 2)
 
-    if abs(Delta) < tol:
-        return [0]
-    elif Delta > 0:  # one real solution
-        sqrtD = np.sqrt(Delta / 27)
-        return [np.cbrt((-q + sqrtD) / 2) + np.cbrt((-q - sqrtD) / 2)]
+        if abs(Delta) < tol:
+            if abs(p) < tol and abs(q) < tol:
+                roots.append(0)
+            else: 
+                roots.append(3*q/p,-3*q/(2*p))
+        elif Delta > 0:  # one real solution
+            sqrtD = np.sqrt(Delta / 27)
+            roots.append(np.cbrt((-q + sqrtD) / 2) + np.cbrt((-q - sqrtD) / 2))
 
-    else:  # 3 real different solutions or multiple solution
+        else:  # 3 real different solutions or multiple solution
 
-        r = 2 * np.sqrt(-p / 3)
-        cos_arg = -q / 2 * np.sqrt(-27 / (p ** 3))
-        cos_arg = np.clip(cos_arg, -1, 1)
-        theta = np.arccos(cos_arg) / 3
-        return r * np.cos(np.array([theta, theta + 2 * np.pi / 3, theta + 4 * np.pi / 3]))
+            r = 2 * np.sqrt(-p / 3)
+            cos_arg = -q / 2 * np.sqrt(-27 / (p ** 3))
+            if cos_arg > 1.0:
+                cos_arg = 1.0
+            elif cos_arg < -1.0:
+                cos_arg = -1.0
+            theta = np.arccos(cos_arg) / 3
+            roots.append( r * np.cos(theta))
+            roots.append( r * np.cos(theta + 2 * np.pi / 3))
+            roots.append( r * np.cos(theta + 4 * np.pi / 3))
+
+    x = 0
+    min_value = a/4 * (x ** 4) + c/2 * (x ** 2) + d * x
+    for sol in roots:
+        value = a/4 * (sol ** 4) + c/2 * (sol ** 2) + d * sol
+        if sol > 0 and value < min_value:
+            x, min_value = sol, value
+    return x, min_value 
 
 
 def update_S(X_list, r, w, v):
@@ -373,32 +440,19 @@ def update_S(X_list, r, w, v):
 # -------------- INITIALIZATION ------------------
 # ------------------------------------------------
 
-def initialize_W_alllayers(X_list, r, init_method, init_w, power_method):
+def initialize_Z_alllayers(X_list, r, init_method):
     L = len(X_list)
     n = X_list[0].shape[0]
 
-    W = np.zeros((L, n, r))
+    Z = np.zeros((L, n, r))
     w = np.zeros((L, n))
     v_init = np.zeros((L, n))
     # Find w and v for each layer
     for l in range(L):
-        w[l], v_init[l], W[l] = initialize_W_onelayer(X_list[l], r)
+        w[l], v_init[l], Z[l] = initialize_Z_onelayer(X_list[l], r)
 
-    if init_method == 'co-association':
-        C = clustering_coassociation(W)  # calcul de la matrice de co-association à partir de W
-        model = SpectralClustering(n_clusters=r, affinity='precomputed', random_state=42)
-        labels_final = model.fit_predict(C)
-
-    elif init_method == 'QR':
-        C = clustering_QR_embeddings(W)
-        clustering_model = KMeans(n_clusters=r, n_init=50, random_state=42)
-        labels_final = clustering_model.fit_predict(C)
-
-    elif init_method == 'NMF':
-        labels_final = nmf_consensus(v_init, r)
-    elif init_method == 'simple':
-        labels_final = consensus_kmeans(v_init, r, normalize_rows=True)
-    elif init_method == 'MF-SC-CA':
+    
+    if init_method == 'MF-SC-CA':
         method = MatrixFreeSpectralClusteringCoAssociation(v_init, r)
         labels_final = method.fit_predict()
 
@@ -408,12 +462,10 @@ def initialize_W_alllayers(X_list, r, init_method, init_w, power_method):
     for l in range(L):
         w[l] = initialize_w_values(X_list[l], labels_final)
 
-    # for l in range(L):
-    #     w[l], v = PowMethOTRISYMNMFFixed(X_list[l], r, labels_final, w[l], maxiter=50, timelimit=200)
 
     return w, labels_final
 
-def initialize_W_onelayer(X, r):
+def initialize_Z_onelayer(X, r):
     options = {'average': 1}
     n = X.shape[0]
     p = max(2, math.floor(0.1 * n / r))
@@ -453,14 +505,14 @@ def initialize_w_values(Xl, v):
     )
     return w
 
-def extract_w_v(W):
-    """ Extracts w and v from W."""
-    w = np.max(W, axis=1)
-    r = W.shape[1]
-    v = np.argmax(W, axis=1)
+def extract_w_v(Z):
+    """ Extracts w and v from Z."""
+    w = np.max(Z, axis=1)
+    r = Z.shape[1]
+    v = np.argmax(Z, axis=1)
 
     # attribuer aléatoirement un entier entre 0 et r-1 pour ces lignes
-    rows_all_zero = np.all(W == 0, axis=1)
+    rows_all_zero = np.all(Z == 0, axis=1)
     v[rows_all_zero] = np.random.randint(0, r, size=np.sum(rows_all_zero))
     return w, v
 def orthNNLS(M, U, Mn=None):
@@ -532,71 +584,24 @@ def orthNNLS(M, U, Mn=None):
 # -------------- UTILS ------------------
 # ------------------------------------------------
 def compute_error(normX, S):
-    """ Computes error ||X - WSW'||_F """
+    """ Computes error ||X - ZSZ'||_F """
     error = np.sqrt(1e-9 + normX ** 2 - np.linalg.norm(S, 'fro') ** 2) 
     return error
-def compute_error_stupid(X,w,v,S):
-    """ Computes error ||X - WSW'||_F """
-    r = S.shape[0]
-    n = X.shape[0]
-    W = np.zeros((n, r))
-    for i in range(n):
-        W[i, v[i]] = w[i]
 
-    error = np.linalg.norm(X-W@S@(W.T), 'fro')
-    return error
+def compute_diff_Z(w,v,prec_w,prec_v):
+    dw = w - prec_w
 
-def PowMethOTRISYMNMFFixed(X, r, v, w, maxiter, timelimit):
-    t0 = time.process_time()
-    e, t = [], []
-    iter = 1
-    n = X.shape[0]
+    same_community = (v == prec_v)
 
-    # Normalization of W
-    nw = np.zeros(r)
-    for i in range(n):
-        nw[v[i]] += w[i] ** 2
-    nw = np.sqrt(nw)
+    diff_norm_sq = np.sum(
+        np.where(
+            same_community[None, :],
+            dw**2,
+            w**2 + prec_w**2
+        )
+    )
 
-    denom = nw[v]
-    mask = denom != 0
-    w[mask] /= denom[mask]
-    w[~mask] = 0
+    previous_norm_sq = np.sum(prec_w**2)
 
-    # Main loop
-    while iter <= maxiter and (time.process_time() - t0) <= timelimit:
-        w_prev = [vec.copy() for vec in w]
+    return np.sqrt(diff_norm_sq / previous_norm_sq)
 
-        for i in range(1, r + 1):
-            Ii = np.where(v == i)[0]
-            x = np.zeros(len(Ii))
-
-            for j in range(1, r + 1):
-                Ij = np.where(v == j)[0]
-                if len(Ii) > 0 and len(Ij) > 0:
-                    vec = (X[np.ix_(Ii, Ij)] @ w[Ij]).ravel()
-                    term = (w[Ii].T @ X[np.ix_(Ii, Ij)] @ w[Ij])
-                    x = x + term * vec  # ici x et vec ont la même taille
-
-            if np.linalg.norm(x) != 0:
-                w[Ii] = x / np.linalg.norm(x)
-        if sum(sum(abs(w_prev - w) / np.linalg.norm(w, 'fro'))) < 1e-7:
-            break
-
-        t.append(time.process_time() - t0)
-
-        iter += 1
-
-    # Normalization of W
-
-    nw = np.zeros(r)
-    for i in range(n):
-        nw[v[i]] += w[i] ** 2
-    nw = np.sqrt(nw)
-
-    denom = nw[v]
-    mask = denom != 0
-    w[mask] /= denom[mask]
-    w[~mask] = 0
-
-    return w, v

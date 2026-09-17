@@ -27,7 +27,7 @@ clusterEvalQ(cl, {
   results <- parLapply(cl, 1:repetitions, function(seed) {
     generate_data <- sim_setting(parameters, seed)
     res <- run_all_methods(generate_data$Adj_list,
-                         generate_data$truecom)
+                         generate_data$truecom,seed)
 
     res <- data.frame(
       Seed = seed,
@@ -89,19 +89,16 @@ iterate_parameters <- function(sim_setting, parameters_list, param_iter,
 
 
 
-run_all_methods <- function(Adj_list, truecoms) {
+run_all_methods <- function(Adj_list, truecoms,seed) {
   K <- length(unique(truecoms))
   
   # Note: to run graph-tool, uncomment the following lines and comment the next
-  # methods_to_run <- c("dcmase", "ave_spherical", "sq-bias-adjusted",
-  #                    "mase-spherical","lmfo", "graph-tool")
-  # methods_to_run <- c("dcmase", "ave_spherical", "sq-bias-adjusted",
-  #                     "mase-spherical","lmfo")
-  methods_to_run <- c("graph-tool","frost-us","lmfo","dcmase","ave_spherical", "sq-bias-adjusted","mase-spherical")
-
-  
+  # methods_to_run <- c("mfrost","dcmase", "ave_spherical", "sq-bias-adjusted","mase-spherical","lmfo", "graph-tool")
+  methods_to_run <- c("mfrost","frost-sharedZ-Anorm","frost-sharedZ")
+ 
   results <- lapply(methods_to_run, function(method) {
     print(method)
+    set.seed(seed)
   pred <- comdetmethods(Adj_list, K, method = method)
 
   err <- classError(pred, truecoms)$errorRate
@@ -116,29 +113,8 @@ run_all_methods <- function(Adj_list, truecoms) {
 })
 
 results <- do.call(rbind, results)
-#rownames(results) <- c(
-#   "graph-tool",
-#   "FROST_MF",
-#   "FROST_US",
-#   "FROST_DCMASE",
-#   "US",
-#   "MF",
-#   "OLMF",
-#   "DC_MASE",
-#   "Sum A",
-#   "S-A^2-Bias-adj",
-#   "MASE"
-# )
-
-rownames(results) <- c(
-  "graph-tool",
-  "FROST",
-  "OLMF",
-  "DC_MASE",
-  "Sum A",
-  "S-A^2-Bias-adj",
-  "MASE"
-)
+#rownames(results) <- c("mFROST",  "DC-MASE","Sum A","Bias-adjusted SoS", "MASE","OLMF","graph-tool")
+rownames(results) <- c("mFROST","mFROST-Zshared-L","mFROST-Zshared")
 
 return(results)
 }

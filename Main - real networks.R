@@ -4,6 +4,7 @@ library(reticulate)
 source("R/comdetmethods.R")
 library(igraph)
 library(mclust)
+library(multinet)
 
 ####################### Load DATA ##########################################################
 build_Flickr <-function(path = "."){
@@ -583,11 +584,9 @@ run_all_methods <- function(Adj_list, truecoms) {
   idx <- !is.na(truecoms)
   K <- length(unique(truecoms[idx]))
   
-  # methods_to_run <- c("graph-tool","frost-mf","frost-us","frost-dcmase",
-  #                     "us","mf","lmfo","dcmase","ave_spherical",
-  #                     "sq-bias-adjusted","mase-spherical")
-   methods_to_run <- c("graph-tool","frost-us","lmfo","dcmase","ave_spherical",
-                       "sq-bias-adjusted","mase-spherical")
+   methods_to_run <- c("graph-tool","frost-us","dcmase","ave_spherical",
+                       "sq-bias-adjusted","mase-spherical","lmfo")
+ 
   results <- lapply(methods_to_run, function(method) {
     print(method)
     
@@ -605,7 +604,7 @@ run_all_methods <- function(Adj_list, truecoms) {
   #                     "US","MF","OLMF","DC_MASE","Sum A",
   #                     "S-A^2-Bias-adj","MASE")
   names(results) <- c("graph-tool","frost-us","dcmase","ave_spherical",
-                       "sq-bias-adjusted","mase-spherical")
+                       "sq-bias-adjusted","mase-spherical","lmfo")
   return(results)
 }
 
@@ -855,8 +854,34 @@ multilayer_properties <- function(adj_list) {
 #data <- build_citeseer_multilayer("Data/citeseer/citeseer.content", "Data/citeseer/citeseer.cites")
 data <- build_AUCS("Data/AUCS/aucs_edgelist.txt","Data/AUCS/aucs_nodelist.txt")
 #data <- build_CBCL("Data/CBCL/multiplex_edges.txt","Data/CBCL/labels.txt")
+#data <- build_caltech("Data/caltech_all/labels.txt","Data/caltech_all/edges.txt")
+# library(R.matlab)
+# library(Matrix)
+
+# save_data <- list(
+#   labels = as.integer(data$labels),
+#   n = as.integer(nrow(data$A[[1]])),
+#   L = as.integer(length(data$A))
+# )
+
+# for (l in seq_along(data$A)) {
+#    # Conversion explicite en matrice sparse générale
+#   A_sparse <- Matrix(data$A[[l]], sparse = TRUE)
+#   A_sparse <- as(A_sparse, "generalMatrix")
+
+#   triplets <- summary(A_sparse)
+
+#   save_data[[paste0("i", l)]] <- as.integer(triplets$i)
+#   save_data[[paste0("j", l)]] <- as.integer(triplets$j)
+#   save_data[[paste0("x", l)]] <- as.numeric(triplets$x)
+# }
+
+# do.call(
+#   writeMat,
+#   c(list(con = "Citeseer.mat"), save_data)
+# )
 
 #data <- build_caltech("Data/caltech_all/labels.txt","Data/caltech_all/edges.txt")
 #data <- build_caltech("Data/caltech_20/labels.txt","Data/caltech_20/edges.txt")
 #properties <- multilayer_properties(data$A)
-#results<-run_all_methods(data$A,data$labels)
+results<-run_all_methods(data$A,data$labels)

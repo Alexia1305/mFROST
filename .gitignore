@@ -8,3 +8,5 @@ Data/other_datasets
 results/
 /Python/frost/__pycache__
 *.pyc
+/Python/scalability_data
+/Python/convergence_data
