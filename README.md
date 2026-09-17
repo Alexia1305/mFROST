@@ -1,74 +1,81 @@
-# Code for "Degree-Corrected Joint Matrix Factorization for
-Multilayer Community Detection" by Alexandra Dache, Manon Rustin, Nicolas Gillis and Arnaud Vandaele 
+# Degree-Corrected Joint Matrix Factorization for Multilayer Community Detection
 
-This repository contains 
-- mFROST, our method for community detection in multilayer networks implemented in Python and in Matlab 
-- all the code required to reproduce the experiments from the paper "Degree-Corrected Joint Matrix Factorization for
-Multilayer Community Detection" based on the paper "Joint spectral clustering in multilayer degree corrected blockmodels" by Joshua Agterberg, Zachary Lubberts and Jesus Arroyo from the github  jesusdaniel/dcmase  .
+Code for the paper **"Degree-Corrected Joint Matrix Factorization for Multilayer Community Detection"** by Alexandra Dache, Manon Rustin, Nicolas Gillis, and Arnaud Vandaele.
 
-folder Python => package mfrost and example.py 
-folder Matlab => folder mfrots and eaxample.py
-folder Experiments
+This repository contains:
+- Python and MATLAB implementations of **mFROST**, our method for community detection in multilayer networks.
+- Code to reproduce the numerical experiments presented in the paper, including synthetic experiments and experiments on real-world multilayer networks.
 
+The synthetic experiments follow the settings of Agterberg, Lubberts, and Arroyo, *"Joint spectral clustering in multilayer degree-corrected stochastic blockmodels"*, and build on their [DC-MASE repository](https://github.com/jesusdaniel/dcmase).
+
+The repository is organized into three main folders:
+
+- `Python/`: the `mfrost` Python package and an example script.
+- `Matlab/`: the MATLAB implementation of mFROST and an example script.
+- `Experiments/`: all code and results for the numerical experiments conducted in R. 
 
 ## mFROST for community detection 
 
-Given a list of  *L*  adjacency matrices representing graphs defined over the same nodes (cf multilayer networks) and the number of communities *r* we are looking for,
+Given $L$ symmetric, nonnegative adjacency matrices $A_1,\ldots,A_L$ representing networks on the same $n$ nodes, and a prescribed number of communities $r$, mFROST jointly approximates each layer as $A_l \approx Z_l S_l Z_l^T$ by solving
 
-mFROST aims to solve the following joint optimization problem:
 $$
-\min_{D_l \geq 0,V\geq 0, S \geq 0} \sum_{l=1}^L||A_l - Z_lS_lZ_l^T||_F^2 \quad \text{s.t.} \quad Z_l^TZ_l = I, Z_l=D_lV
+\min_{V,\{D_l,Z_l,S_l\}_{l=1}^L}
+\sum_{l=1}^L \|A_l-Z_lS_lZ_l^T\|_F^2
 $$
+
+subject to
+
+$$
+Z_l=D_lV,\qquad Z_l^TZ_l=I_r,\qquad S_l\geq 0,
+\qquad l=1,\ldots,L,
+$$
+
+where $V\in\{0,1\}^{n\times r}$ has exactly one nonzero entry per row and each $D_l$ is a diagonal matrix with nonnegative entries.
 
 Where:
-- **A_l** is a given symmetric nonnegative matrix of size $n \times n$  (e.g., the adjacency matrix of the layer $l).
-- **Z_l** is a $n \times r$ matrix encoding the assignment of each node into **r** communities, where $Z(i,k) \neq 0$ if node $i$ belongs to community $k$.
-- The constraint $Z_l=D_V imposes that the community assignments are the same across layers but the values of Z_l can change between layers to handle degree heterogeneity across layers (cf paper) 
+- **$A_l\in\mathbb{R}_+^{n\times n}$** is the adjacency matrix of layer $l$.
+- **Z_l** is a $n \times r$ matrix encoding the assignment of each node into **r** communities, where $Z_l(i,k) \neq 0$ if node $i$ belongs to community $k$.
+- The constraint $Z_l=D_l V imposes that the community assignments are the same across layers but the values of Z_l can change between layers to handle degree heterogeneity across layers (cf paper) 
 - **S_l** is a $r\times r$ central matrix describing interactions between communities in the layer $l$.
 
-The algorithm is implemented in Python and matlab 
 
 ### Python implementation 
-folder Python
-An example script demonstrating how to use the `FROST` function is included in the script`Example.py`.
+The Python package is located in `Python/mfrost/`. An example demonstrating how to run mFROST is provided in `Python/Example.py`.
 
+We recommend Python 3.12 or later. Install the dependencies using the provided `requirements.txt` file. From the directory containing that file, run:
 
-package mfrost inthe folder python\mfrost
-to use it we recommend python > 3.12
-To install the dependencies requirements.txt file 
-mFROST required the librairies below: 
+```bash
+python -m pip install -r requirements.txt
+```
 
-numpy
-scipy
-pandas
-scikit-learn
-(matplotlib) for the Figures in Example.py  
+The Python implementation uses:
+- `numpy`
+- `scipy`
+- `pandas`
+- `scikit-learn`
+
+`matplotlib` is also needed to generate the figures in `Example.py`.
 
 ### Matlab implementation 
-folder algo/ mfrost/mfrost.m 
-An example script demonstrating how to use the `FROST` function is included in the script`Example.m`.
+The MATLAB implementation is provided in Matlab/, with all functions required by mFROST located in the algo/ subfolder. The main function is algo/mfrost/mfrost.m. Run Instal.m to add the required folders to the MATLAB path, then run Example.m for an example of how to use the algorithm.
 
 
 ## Reproduce the experiments
-The experiments are based on the paper "Joint spectral clustering in multilayer degree corrected blockmodels" by Joshua Agterberg, Zachary Lubberts and Jesus Arroyo from the github  jesusdaniel/dcmase  .
-We kepts the same settings for the synthetics experiments and added real-world multilayer networks. 
+The synthetic experiments use the settings of Agterberg, Lubberts, and Arroyo and build on their [DC-MASE code](https://github.com/jesusdaniel/dcmase). We also include experiments on real-world multilayer networks.
 
-
-### File overview section
-The folder contains scripts to implement the methods, implement the experiment, run the experiments and generate figures, and additional files containing the results of the experiments. Descriptions of each file are listed below.
 
 #### Method
-- *Python/mfrost: python package for the mFROST method 
-- *Python/graphtool-script.py*: wrapper for running graphtool method.
-- *R/dcmase.R*: implements the degree-corrected adjacency spectral embedding.
-- *R/comdet-dcmase.R*: implements a community detection method based on DC-MASE.
-- *R/comdetmethods.R*: code implementation of alternative methods for multilayer community detection (including method by Paul and Chen (2020) contained in *R/Codes_Spectral_Matrix_Paul_Chen_AOS_2020.r*, and the method from the Python package graphtool, which is called via the script *R/run_graph_tool.R*)
-- *R/SpectralMethods.R* and *R/getElbows.R*: contain auxiliary functions to perform spectral embeddings.
-- *R/make_ggplot.R* and *R/make_dcsbm_plots.R*: implement functions to create plots from experiments.
+- *Experiments/Python/mfrost: python package for the mFROST method 
+- *Experiments/Python/graphtool-script.py*: wrapper for running graphtool method.
+- *Experiments/R/dcmase.R*: implements the degree-corrected adjacency spectral embedding.
+- *Experiments/R/comdet-dcmase.R*: implements a community detection method based on DC-MASE.
+- *Experiments/R/comdetmethods.R*: code implementation of alternative methods for multilayer community detection (including method by Paul and Chen (2020) contained in *R/Codes_Spectral_Matrix_Paul_Chen_AOS_2020.r*, and the method from the Python package graphtool, which is called via the script *R/run_graph_tool.R*)
+- *Experiments/R/SpectralMethods.R* and *R/getElbows.R*: contain auxiliary functions to perform spectral embeddings.
+- *Experiments/R/make_ggplot.R* and *R/make_dcsbm_plots.R*: implement functions to create plots from experiments.
 
 #### Experiments
-- *Experiments/run_all_methods.R*: wrapper functions for generating simulated data and running all community detection methods on these simulations
-- *Experiments/simulations sparsity.R*: wrapper for data generation in simulations as function of network sparsity 
+- *Experiments/Simulations/run_all_methods.R*: wrapper functions for generating simulated data and running all community detection methods on these simulations
+- *Experiments/Simulations/simulations sparsity.R*: wrapper for data generation in simulations as function of network sparsity 
 
 
 #### Code to generate figures
@@ -104,10 +111,22 @@ remotes::install_version("parallel", version = "4.1.1")
 # Interface between R and Python !!! 
 install.packages("reticulate")
 ```
-Python must also be installed, along with the libraries listed in the Python implementation section if you want to use mFROST.
+#### Python
 
-# References
+Python must also be installed, together with the dependencies listed in the **Python implementation** section, to run mFROST from R. Configure `reticulate` to use the Python environment containing these dependencies before running the experiments:
+
+```r
+library(reticulate)
+use_python("/path/to/python", required = TRUE)
+```
+
+Replace `/path/to/python` with the path to the appropriate Python executable.
+
+Running the graph-tool baseline additionally requires `graph-tool` in the Python environment used by its wrapper.
+
+## References
  TO DO : add our paper 
+ 
 if you reproduce the synthetics experiments, please cite :
 Agterberg, J., Lubberts, Z., & Arroyo, J. (2025). Joint spectral clustering in multilayer degree-corrected stochastic blockmodels. Journal of the American Statistical Association, (just-accepted), 1-23. 
 [![arXiv shield](https://img.shields.io/badge/arXiv-2212.05053-red.svg?style=flat)](https://arxiv.org/abs/2212.05053)
