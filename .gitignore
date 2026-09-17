@@ -10,3 +10,8 @@ results/
 *.pyc
 /Python/scalability_data
 /Python/convergence_data
+*.Identifier
+/Experiments/Data/other_datasets
+/Experiments/Python/convergence_data
+/Experiments/Python/convergence_plots
+/Experiments/Python/scalability_data
