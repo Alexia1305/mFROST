@@ -3,12 +3,14 @@
 # Multilayer Degree Corrected Blockmodles"
 #######################################
 
+#NOTE: To run mFROST and graph-tool Python must also be installed, together with the dependencies listed in the requirements.txt, 
+# Configure reticulate to use the Python environment containing these dependencies before running the experiments:
+# Modify the file Experiments/R/comdetmethods to use mFROST in Python
+
 # Load all methods for simulations
-source("Experiments/run_all_methods.R")
+source("Simulations/run_all_methods.R")
 library(dplyr)
-# Note: the  code excludes the method graph-tool by default.
-# To run graph-tool, install the Python package and uncomment
-# the corresponding lines in "R/run_all_methods.R"
+# Note: 
 
 ######################################
 #Simulation settings

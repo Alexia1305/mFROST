@@ -7,56 +7,15 @@ library(igraph)
 library(mclust)
 library(multinet)
 
+#NOTE: To run mFROST and graph-tool Python must also be installed, together with the dependencies listed in the requirements.txt, 
+# Configure reticulate to use the Python environment containing these dependencies before running the experiments:
+# Modify the file Experiments/R/comdetmethods to use mFROST in Python
+
 ####################### Load DATA ##########################################################
-build_Flickr <-function(path = "."){
-
-  
-  # Lire les labels
-  labels_file <- file.path(path, "labels.txt")
-  labels <- scan(labels_file, what = "", quiet = TRUE)
-  labels <- as.numeric(labels) + 1
-  
-  # Nombre de noeuds
-  n <- length(labels)
-  
-  
-  # Fonction pour construire une matrice d'adjacence
-  read_layer <- function(file) {
-    
-    edges <- read.table(file, header = FALSE)
-
-    edges$V1 <- edges$V1 + 1
-    edges$V2 <- edges$V2 + 1    
-    
-    A <-  Matrix(0, n, n, sparse = TRUE)
-    
-    # Graphe non orienté
-    A[cbind(edges$V1, edges$V2)] <- 1
-    A[cbind(edges$V2, edges$V1)] <- 1
-    
-    return(A)
-  }
-  
-  
-  # Lire les couches
-  layers <- list(
-    read_layer(file.path(path, "layer0.txt")),
-    read_layer(file.path(path, "layer1.txt"))
-  )
-  
-  
-  return(list(
-    A = layers,
-    labels = labels
-  ))
-}
 
 build_AUCS <- function(edge_file, node_file){
 
-  ############################
-  # Lecture des données
-  ############################
-  
+
   edges <- read.csv(
     edge_file,
     header = TRUE,
@@ -69,21 +28,11 @@ build_AUCS <- function(edge_file, node_file){
     stringsAsFactors = FALSE
   )
 
-
-  ############################
-  # Liste des noeuds
-  ############################
-  
   node_names <- nodes$node
   N <- length(node_names)
   
   node_index <- setNames(1:N, node_names)
 
-
-  ############################
-  # Matrices d'adjacence
-  ############################
-  
   layers <- unique(edges$layer)
   
   adjacency_list <- list()
@@ -119,16 +68,8 @@ build_AUCS <- function(edge_file, node_file){
   }
   names(adjacency_list) <- NULL
 
-  ############################
-  # Groupes des noeuds
-  ############################
-  
   groups <- as.numeric(sub("G", "", nodes$group))
  
-  ############################
-  # Retour
-  ############################
-  
   return(
     list(
       A = adjacency_list,
@@ -139,9 +80,8 @@ build_AUCS <- function(edge_file, node_file){
 
 build_cora_multilayer <- function(content_path, cites_path, k = 20) {
   
-  # -------------------------
-  # 1. Load content file
-  # -------------------------
+
+  # Load content file
   content <- read.table(content_path,
                         header = FALSE,
                         stringsAsFactors = FALSE)
@@ -152,9 +92,8 @@ build_cora_multilayer <- function(content_path, cites_path, k = 20) {
   X <- as.matrix(content[, 2:(ncol(content) - 1)])
   rownames(X) <- paper_id
   
-  # -------------------------
+ 
   # KEEP ONLY 3 CLASSES
-  # -------------------------
   keep_classes <- c(
     "Genetic_Algorithms",
     "Neural_Networks",
@@ -172,9 +111,8 @@ build_cora_multilayer <- function(content_path, cites_path, k = 20) {
   
   n <- length(paper_id)
   
-  # -------------------------
-  # 2. CITATION LAYER
-  # -------------------------
+
+  # CITATION LAYER
   cites <- read.table(cites_path,
                       header = FALSE,
                       stringsAsFactors = FALSE)
@@ -196,9 +134,9 @@ cites <- cites[valid, ]
 
 adj_citation[cbind(cites$citing, cites$cited)] <- 1
 adj_citation[cbind(cites$cited, cites$citing)] <- 1
-  # -------------------------
-  # 3. SIMILARITY LAYER
-  # -------------------------
+
+  # SIMILARITY LAYER
+
   norm_X <- sqrt(rowSums(X^2))
   norm_X[norm_X == 0] <- 1  # avoid division by zero
   
@@ -207,9 +145,9 @@ adj_citation[cbind(cites$cited, cites$citing)] <- 1
   sim <- X_norm %*% t(X_norm)
   diag(sim) <- 0
   
-  # -------------------------
-  # 4. kNN GRAPH
-  # -------------------------
+ 
+  # kNN GRAPH
+
   adj_similarity <- matrix(0, n, n)
   rownames(adj_similarity) <- paper_id
   colnames(adj_similarity) <- paper_id
@@ -222,9 +160,9 @@ adj_citation[cbind(cites$cited, cites$citing)] <- 1
   # symmetrize
  adj_similarity <- pmax( adj_similarity, t( adj_similarity))
   
-  # -------------------------
-  # 5. RETURN
-  # -------------------------
+
+  # RETURN
+
     A <- list(
   adj_citation,
   adj_similarity)
@@ -236,9 +174,8 @@ adj_citation[cbind(cites$cited, cites$citing)] <- 1
 
 build_citeseer_multilayer <- function(content_path, cites_path, k = 20) {
   
-  # -------------------------
-  # 1. Load content file
-  # -------------------------
+
+  # Load content file
   content <- read.table(content_path,
                         header = FALSE,
                         stringsAsFactors = FALSE)
@@ -262,9 +199,9 @@ build_citeseer_multilayer <- function(content_path, cites_path, k = 20) {
   
   n <- length(paper_id)
   
-  # -------------------------
-  # 2. CITATION LAYER
-  # -------------------------
+
+  # CITATION LAYER
+
   cites <- read.table(cites_path,
                       header = FALSE,
                       stringsAsFactors = FALSE)
@@ -286,9 +223,9 @@ cites <- cites[valid, ]
 
 adj_citation[cbind(cites$citing, cites$cited)] <- 1
 adj_citation[cbind(cites$cited, cites$citing)] <- 1
-  # -------------------------
-  # 3. SIMILARITY LAYER
-  # -------------------------
+
+  #  SIMILARITY LAYER
+
   norm_X <- sqrt(rowSums(X^2))
   norm_X[norm_X == 0] <- 1  # avoid division by zero
   
@@ -296,10 +233,9 @@ adj_citation[cbind(cites$cited, cites$citing)] <- 1
   
   sim <- X_norm %*% t(X_norm)
   diag(sim) <- 0
-  
-  # -------------------------
-  # 4. kNN GRAPH
-  # -------------------------
+
+  # kNN GRAPH
+
   adj_similarity <- matrix(0, n, n)
   rownames(adj_similarity) <- paper_id
   colnames(adj_similarity) <- paper_id
@@ -312,9 +248,9 @@ adj_citation[cbind(cites$cited, cites$citing)] <- 1
   # symmetrize
    adj_similarity <- pmax( adj_similarity, t( adj_similarity))
   
-  # -------------------------
-  # 5. RETURN
-  # -------------------------
+ 
+  # RETURN
+
 
   A <- list(
   adj_citation,
@@ -325,206 +261,9 @@ adj_citation[cbind(cites$cited, cites$citing)] <- 1
   ))
 }
 
-build_UCI<- function(path, k = 20) {
-  
-  files <- c("mfeat-fou", "mfeat-fac", "mfeat-kar",
-             "mfeat-pix", "mfeat-zer", "mfeat-mor")
-  
-  # labels: 200 instances per class (0–9)
-  true_labels <- rep(0:9, each = 200)
-  
-  adjacency_list <- lapply(files, function(f) {
-    
-    file_path <- file.path(path, f)
-    
-    # load data
-    X <- as.matrix(read.table(file_path))
-    
-    n <- nrow(X)
-    
-    # Euclidean distances
-    dist_mat <- as.matrix(dist(X, method = "euclidean"))
-    
-    # k-NN adjacency (directed first)
-    A <- matrix(0, n, n)
-    
-    for (i in 1:n) {
-      nn <- order(dist_mat[i, ])[2:(k + 1)]
-      A[i, nn] <- 1
-    }
-    
-    # make graph non-oriented (symmetrize)
-   
-    A <- pmax(A, t(A))
-    return(A)
-  })
-  
-  
-  return(list(
-    A = adjacency_list,
-    labels = true_labels
-  ))
-}
-
-build_CBCL<- function(edges_path, labels_path) {
-  
-  # --- Lecture des labels ---
-  labels_df <- read.table(labels_path, header = FALSE, 
-                           col.names = c("nodeID", "label"))
-  labels_df <- labels_df[order(labels_df$nodeID), ]  # s'assurer de l'ordre
-  labels <- labels_df$label
-  
-  n_nodes <- max(labels_df$nodeID)
-  
-  
-  
-  edges_df <- read.table(edges_path, header = FALSE,
-                          col.names = c("layer", "i", "j"))
-  edges_df$weight <- 1
-  
-  
-  layer_ids <- sort(unique(edges_df$layer))
-  
-  # --- Construction d'une matrice d'adjacence par couche ---
-  A_list <- lapply(layer_ids, function(l) {
-    A <- matrix(0, nrow = n_nodes, ncol = n_nodes)
-    edges_l <- edges_df[edges_df$layer == l, ]
-    
-    for (k in seq_len(nrow(edges_l))) {
-      i <- edges_l$i[k]
-      j <- edges_l$j[k]
-      A[i, j] <- 1
-      A[j, i] <- 1  
-    }
-    
-    A
-  })
-  
- 
-  
-   
-  return(list(
-    A = A_list,
-    labels = labels
-  ))
-}
-
-build_lazega <- function(path,
-                        metadata = c("status", "gender", "office",
-                                     "practice", "lawschool")) {
-
-  metadata <- match.arg(metadata)
-
-  ## ---------- Read files ----------
-  edges  <- read.table(file.path(path, "Lazega-Law-Firm_multiplex.edges"),
-                       header = FALSE)
-
-  layers <- read.table(file.path(path, "Lazega-Law-Firm_layers.txt"),
-                 header = TRUE)
-
-  nodes  <- read.table(file.path(path, "Lazega-Law-Firm_nodes.txt"),
-                       header = TRUE)
-  
-
-  colnames(nodes) <- c(
-    "id",
-    "status",
-    "gender",
-    "office",
-    "years",
-    "age",
-    "practice",
-    "lawschool"
-  )
-
-  n <- nrow(nodes)
-
-  ## ---------- Build adjacency matrices ----------
-  adjacency_list <- vector("list", 3)
-  
-
-  for(i in list(1,2,3)){
-
-    layer_edges <- edges[edges$V1 == i, ]
-
-    A <- matrix(0, n, n)
-
-    A[cbind(layer_edges$V2, layer_edges$V3)] <- 1
-    A[cbind(layer_edges$V3, layer_edges$V2)] <- 1
-
-    adjacency_list[[i]] <- A
-  }
-
-  ## ---------- Labels ----------
-  labels <- nodes[[metadata]]
-
-  ## ---------- Return ----------
-  list(
-    A = adjacency_list,
-    labels = labels,
-    node_metadata = nodes
-  )
-}
-build_elegans <- function(path,
-                        metadata = c("status", "gender", "office",
-                                     "practice", "lawschool")) {
-
-  metadata <- match.arg(metadata)
-
-  ## ---------- Read files ----------
-  edges  <- read.table(file.path(path, "Lazega-Law-Firm_multiplex.edges"),
-                       header = FALSE)
-
-  layers <- read.table(file.path(path, "Lazega-Law-Firm_layers.txt"),
-                 header = TRUE)
-
-  nodes  <- read.table(file.path(path, "Lazega-Law-Firm_nodes.txt"),
-                       header = TRUE)
-  
-
-  colnames(nodes) <- c(
-    "id",
-    "status",
-    "gender",
-    "office",
-    "years",
-    "age",
-    "practice",
-    "lawschool"
-  )
-
-  n <- nrow(nodes)
-
-  ## ---------- Build adjacency matrices ----------
-  adjacency_list <- vector("list", 3)
-  
-
-  for(i in list(1,2,3)){
-
-    layer_edges <- edges[edges$V1 == i, ]
-
-    A <- matrix(0, n, n)
-
-    A[cbind(layer_edges$V2, layer_edges$V3)] <- 1
-    A[cbind(layer_edges$V3, layer_edges$V2)] <- 1
-
-    adjacency_list[[i]] <- A
-  }
-
-  ## ---------- Labels ----------
-  labels <- nodes[[metadata]]
-
-  ## ---------- Return ----------
-  list(
-    A = adjacency_list,
-    labels = labels,
-    node_metadata = nodes
-  )
-}
-
 build_caltech <- function(labels_file, edges_file) {
   
-  ## ---- Read labels ----
+  # Read labels 
   labels_data <- read.table(
     labels_file,
     header = FALSE
@@ -536,7 +275,7 @@ build_caltech <- function(labels_file, edges_file) {
   n <- length(labels)
   
   
-  ## ---- Read edges ----
+  # Read edges
   edges <- read.table(
     edges_file,
     header = FALSE
@@ -552,7 +291,7 @@ build_caltech <- function(labels_file, edges_file) {
   A_list <- vector("list", num_layers)
   
   
-  ## ---- Build adjacency matrices ----
+  # Build adjacency matrices
   for (l in 1:num_layers) {
     
     edges_l <- edges[edges$V1 == l, ]
@@ -564,7 +303,7 @@ build_caltech <- function(labels_file, edges_file) {
       dims = c(n, n)
     )
     
-    # sécurité : supprimer les doublons
+    
     A[A > 1] <- 1
     
     A_list[[l]] <- A
@@ -585,8 +324,8 @@ run_all_methods <- function(Adj_list, truecoms) {
   idx <- !is.na(truecoms)
   K <- length(unique(truecoms[idx]))
   
-   methods_to_run <- c("graph-tool","frost-us","dcmase","ave_spherical",
-                       "sq-bias-adjusted","mase-spherical","lmfo")
+   methods_to_run <- c("graph-tool","mfrost","dcmase","ave_spherical",
+                       "sq-bias-adjusted","mase-spherical")
  
   results <- lapply(methods_to_run, function(method) {
     print(method)
@@ -594,7 +333,7 @@ run_all_methods <- function(Adj_list, truecoms) {
     labels <- allmethods(Adj_list, K, method = method)
     
     res<-list(
-      NMI = NMI(truecoms[idx], as.vector(labels)[idx]),
+      NMI = NMI(truecoms[idx], as.vector(labels)[idx],  variant = "sum"),
       errorRate = classError(labels[idx], truecoms[idx])$errorRate,
       ARI = ARI(truecoms[idx], as.vector(labels)[idx])
     )
@@ -604,8 +343,8 @@ run_all_methods <- function(Adj_list, truecoms) {
   # names(results) <- c("graph-tool","FROST_MF","FROST_US","FROST_DCMASE",
   #                     "US","MF","OLMF","DC_MASE","Sum A",
   #                     "S-A^2-Bias-adj","MASE")
-  names(results) <- c("graph-tool","frost-us","dcmase","ave_spherical",
-                       "sq-bias-adjusted","mase-spherical","lmfo")
+  names(results) <- c("graph-tool","mfrost","dcmase","ave_spherical",
+                       "sq-bias-adjusted","mase-spherical")
   return(results)
 }
 
@@ -619,9 +358,8 @@ multilayer_properties <- function(adj_list) {
   cat("Number of nodes:", N, "\n")
   cat("Number of layers:", L, "\n\n")
   
-  # ============================================================
-  # 1. Statistics for each layer
-  # ============================================================
+  
+  # Statistics for each layer
   
   layer_statistics <- data.frame(
     layer = 1:L,
@@ -642,7 +380,7 @@ multilayer_properties <- function(adj_list) {
     
     A <- adj_list[[l]]
     
-    # Remove self-loops
+    
     diag(A) <- 0
     
     g <- igraph::graph_from_adjacency_matrix(
@@ -686,10 +424,9 @@ multilayer_properties <- function(adj_list) {
     layer_statistics$components[l] <- igraph::components(g)$no
   }
   
-  # ============================================================
-  # 2. Summary across layers
-  # ============================================================
-  
+ 
+  # Summary across layers
+
   summary <- data.frame(
     measure = c(
       "Number of edges",
@@ -728,10 +465,7 @@ multilayer_properties <- function(adj_list) {
     )
   )
   
-  # ============================================================
-  # 3. Compact summary for paper
-  # ============================================================
-  
+
   paper_summary <- data.frame(
     property = c(
       "Nodes",
@@ -775,9 +509,9 @@ multilayer_properties <- function(adj_list) {
     )
   )
   
-  # ============================================================
-  # 4. Similarity between layers
-  # ============================================================
+
+  # Similarity between layers
+ 
   
   cat("\n---- Layer similarity ----\n")
   
@@ -816,9 +550,9 @@ multilayer_properties <- function(adj_list) {
     )
   }
   
-  # ============================================================
-  # 5. Print results
-  # ============================================================
+  
+  # Print results
+ 
   
   cat("\n---- Layer statistics ----\n")
   print(layer_statistics)
@@ -829,9 +563,9 @@ multilayer_properties <- function(adj_list) {
   cat("\n---- Compact summary for paper ----\n")
   print(paper_summary)
   
-  # ============================================================
-  # 6. Return
-  # ============================================================
+
+  # Return
+
   
   return(
     list(
@@ -848,41 +582,12 @@ multilayer_properties <- function(adj_list) {
 
 
 ######################################## RESULTS ############################
-#data <- build_Flickr("Data/Flickr")
-#data <- build_lazega("Data/Lazega/Dataset",metadata="practice")
+
 #data <- build_cora_multilayer("Data/cora/cora.content", "Data/cora/cora.cites")
-#data <- build_UCI("Data/UCI",k=20)
 #data <- build_citeseer_multilayer("Data/citeseer/citeseer.content", "Data/citeseer/citeseer.cites")
 data <- build_AUCS("Data/AUCS/aucs_edgelist.txt","Data/AUCS/aucs_nodelist.txt")
-#data <- build_CBCL("Data/CBCL/multiplex_edges.txt","Data/CBCL/labels.txt")
 #data <- build_caltech("Data/caltech_all/labels.txt","Data/caltech_all/edges.txt")
-# library(R.matlab)
-# library(Matrix)
-
-# save_data <- list(
-#   labels = as.integer(data$labels),
-#   n = as.integer(nrow(data$A[[1]])),
-#   L = as.integer(length(data$A))
-# )
-
-# for (l in seq_along(data$A)) {
-#    # Conversion explicite en matrice sparse générale
-#   A_sparse <- Matrix(data$A[[l]], sparse = TRUE)
-#   A_sparse <- as(A_sparse, "generalMatrix")
-
-#   triplets <- summary(A_sparse)
-
-#   save_data[[paste0("i", l)]] <- as.integer(triplets$i)
-#   save_data[[paste0("j", l)]] <- as.integer(triplets$j)
-#   save_data[[paste0("x", l)]] <- as.numeric(triplets$x)
-# }
-
-# do.call(
-#   writeMat,
-#   c(list(con = "Citeseer.mat"), save_data)
-# )
-
 #data <- build_caltech("Data/caltech_all/labels.txt","Data/caltech_all/edges.txt")
-#data <- build_caltech("Data/caltech_20/labels.txt","Data/caltech_20/edges.txt")
+
 #properties <- multilayer_properties(data$A)
 results<-run_all_methods(data$A,data$labels)

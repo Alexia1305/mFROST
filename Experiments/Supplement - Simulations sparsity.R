@@ -3,6 +3,10 @@
 # Multilayer Degree Corrected Blockmodles"
 #######################################
 
+#NOTE: To run mFROST and graph-tool Python must also be installed, together with the dependencies listed in the requirements.txt, 
+# Configure reticulate to use the Python environment containing these dependencies before running the experiments:
+# Modify the file Experiments/R/comdetmethods to use mFROST in Python
+
 # These simulations compare the performance
 # of different multilayer clustering methods
 # in terms of edge density

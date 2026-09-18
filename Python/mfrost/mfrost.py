@@ -188,8 +188,8 @@ def mfrost(X_list, r, numTrials=10, maxiter=50, delta=1e-6, time_limit=None, ini
             print('Time', time.time() - start_time)
         prev_error = 0
         for l in range(L):
-            prev_error += compute_error(normX[l], S[l])
-        prev_error=prev_error/sum(normX)
+            prev_error += compute_error(normX[l], S[l])**2
+        prev_error=np.sqrt(prev_error/sum(x ** 2 for x in normX))
         error = prev_error
 
        
@@ -210,8 +210,8 @@ def mfrost(X_list, r, numTrials=10, maxiter=50, delta=1e-6, time_limit=None, ini
             prev_error = error
             error = 0
             for l in range(L):
-                error += compute_error(normX[l], S[l])
-            error=error/sum(normX)
+                error += compute_error(normX[l], S[l])**2
+            error=np.sqrt(error/sum(x ** 2 for x in normX))
 
            
 

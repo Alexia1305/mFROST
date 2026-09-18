@@ -199,22 +199,18 @@ def mfrost(X_list, r, numTrials=10, maxiter=50, delta=1e-6, time_limit=None, ini
             print('Time', time.time() - start_time)
         prev_error = 0
         for l in range(L):
-            prev_error += compute_error(normX[l], S[l])
-        prev_error=prev_error/sum(normX)
+            prev_error += compute_error(normX[l], S[l])**2
+        prev_error=np.sqrt(prev_error/sum(x ** 2 for x in normX))
         error = prev_error
-
         if convergence_test:
                         trial_results["error"].append(error)
-                        trial_results["Z_change"].append(None)
-                        trial_results["n_changed"].append(None)
                         trial_results["time"].append(time.time()-start_trial)
                         if true_labels is not None:
                             indices = np.where(~np.isnan(true_labels))[0]
                             trial_results["NMI"].append(normalized_mutual_info_score(v[indices],true_labels[indices]))
                             trial_results["ARI"].append(adjusted_rand_score(v[indices],true_labels[indices]))
-
         
-    
+
         for iteration in range(maxiter):
            
             if time_limit and time.time() - start_time > time_limit:
@@ -231,8 +227,8 @@ def mfrost(X_list, r, numTrials=10, maxiter=50, delta=1e-6, time_limit=None, ini
             prev_error = error
             error = 0
             for l in range(L):
-                error += compute_error(normX[l], S[l])
-            error=error/sum(normX)
+                error += compute_error(normX[l], S[l])**2
+            error=np.sqrt(error/sum(x ** 2 for x in normX))
 
             if convergence_test:
                 trial_results["error"].append(error)
@@ -511,7 +507,7 @@ def extract_w_v(Z):
     r = Z.shape[1]
     v = np.argmax(Z, axis=1)
 
-    # attribuer aléatoirement un entier entre 0 et r-1 pour ces lignes
+    
     rows_all_zero = np.all(Z == 0, axis=1)
     v[rows_all_zero] = np.random.randint(0, r, size=np.sum(rows_all_zero))
     return w, v

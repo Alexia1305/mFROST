@@ -58,9 +58,9 @@ def build_AUCS(edge_file, node_file):
 
 def build_cora_multilayer(content_path, cites_path, k=20):
 
-    # -------------------------
-    # 1. Load content file
-    # -------------------------
+   
+    # Load content file
+   
     content = pd.read_csv(
         content_path,
         sep=r"\s+",
@@ -72,9 +72,9 @@ def build_cora_multilayer(content_path, cites_path, k=20):
 
     X = content.iloc[:, 1:-1].to_numpy(dtype=float)
 
-    # -------------------------
+   
     # KEEP ONLY 3 CLASSES
-    # -------------------------
+   
     keep_classes = [
         "Genetic_Algorithms",
         "Neural_Networks",
@@ -101,9 +101,9 @@ def build_cora_multilayer(content_path, cites_path, k=20):
 
     n = len(paper_id)
 
-    # -------------------------
-    # 2. CITATION LAYER
-    # -------------------------
+   
+    # CITATION LAYER
+   
     cites = pd.read_csv(
         cites_path,
         sep=r"\s+",
@@ -138,9 +138,9 @@ def build_cora_multilayer(content_path, cites_path, k=20):
         adj_citation[citing_idx, cited_idx] = 1
         adj_citation[cited_idx, citing_idx] = 1
 
-    # -------------------------
-    # 3. SIMILARITY LAYER
-    # -------------------------
+   
+    # SIMILARITY LAYER
+   
 
     # Row-wise L2 norm
     norm_X = np.sqrt(np.sum(X**2, axis=1))
@@ -156,9 +156,9 @@ def build_cora_multilayer(content_path, cites_path, k=20):
     # Remove self-similarity
     np.fill_diagonal(sim, 0)
 
-    # -------------------------
-    # 4. kNN GRAPH
-    # -------------------------
+   
+    # kNN GRAPH
+   
     adj_similarity = np.zeros((n, n), dtype=int)
 
     for i in range(n):
@@ -178,9 +178,6 @@ def build_cora_multilayer(content_path, cites_path, k=20):
     # Remove diagonal just in case
     np.fill_diagonal(adj_similarity, 0)
 
-    # -------------------------
-    # 5. RETURN
-    # -------------------------
 
     A = [
         adj_citation,
@@ -194,9 +191,9 @@ def build_cora_multilayer(content_path, cites_path, k=20):
 
 def build_citeseer_multilayer(content_path, cites_path, k=20):
 
-    # -------------------------
-    # 1. Load content file
-    # -------------------------
+   
+    # Load content file
+   
     content = pd.read_csv(
         content_path,
         sep=r"\s+",
@@ -224,9 +221,9 @@ def build_citeseer_multilayer(content_path, cites_path, k=20):
 
     n = len(paper_id)
 
-    # -------------------------
-    # 2. CITATION LAYER
-    # -------------------------
+   
+    # CITATION LAYER
+   
     cites = pd.read_csv(
         cites_path,
         sep=r"\s+",
@@ -261,9 +258,9 @@ def build_citeseer_multilayer(content_path, cites_path, k=20):
         adj_citation[citing_idx, cited_idx] = 1
         adj_citation[cited_idx, citing_idx] = 1
 
-    # -------------------------
-    # 3. SIMILARITY LAYER
-    # -------------------------
+   
+    # SIMILARITY LAYER
+   
 
     # Row-wise L2 norm
     norm_X = np.sqrt(np.sum(X**2, axis=1))
@@ -279,9 +276,9 @@ def build_citeseer_multilayer(content_path, cites_path, k=20):
     # Remove self-similarity
     np.fill_diagonal(sim, 0)
 
-    # -------------------------
-    # 4. kNN GRAPH
-    # -------------------------
+   
+    #  kNN GRAPH
+   
     adj_similarity = np.zeros((n, n), dtype=int)
 
     for i in range(n):
@@ -301,10 +298,6 @@ def build_citeseer_multilayer(content_path, cites_path, k=20):
     # Remove diagonal just in case
     np.fill_diagonal(adj_similarity, 0)
 
-    # -------------------------
-    # 5. RETURN
-    # -------------------------
-
     A = [
         adj_citation,
         adj_similarity
@@ -317,7 +310,7 @@ def build_citeseer_multilayer(content_path, cites_path, k=20):
 
 def build_caltech(labels_file, edges_file):
     
-    # ---- Read labels ----
+    #  Read labels 
     labels_data = pd.read_csv(
         labels_file,
         sep=r"\s+",
@@ -330,7 +323,7 @@ def build_caltech(labels_file, edges_file):
     n = len(labels)
     
     
-    # ---- Read edges ----
+    #  Read edges 
     edges = pd.read_csv(
         edges_file,
         sep=r"\s+",
@@ -347,7 +340,7 @@ def build_caltech(labels_file, edges_file):
     A_list = []
     
     
-    # ---- Build adjacency matrices ----
+    #  Build adjacency matrices 
     for l in range(1, num_layers + 1):
         
         edges_l = edges[edges.iloc[:, 0] == l]
@@ -429,10 +422,10 @@ if __name__ == "__main__":
 
     #data = build_caltech("../Data/caltech_all/labels.txt", "../Data/caltech_all/edges.txt")
     #data= build_cora_multilayer("../Data/cora/cora.content","../Data/cora/cora.cites",k=20)
-    #data= build_citeseer_multilayer("../Data/citeseer/citeseer.content","../Data/citeseer/citeseer.cites",k=20)
-    data=build_AUCS("../Data/AUCS/aucs_edgelist.txt","../Data/AUCS/aucs_nodelist.txt")
+    data= build_citeseer_multilayer("../Data/citeseer/citeseer.content","../Data/citeseer/citeseer.cites",k=20)
+    #data=build_AUCS("../Data/AUCS/aucs_edgelist.txt","../Data/AUCS/aucs_nodelist.txt")
     labels = np.array(data["labels"])
     A_list = data["A"]
-    np.random.seed(42)
+    np.random.seed(100)
     print(int(max(labels)))
     test_scalability(A_list,int(max(labels)), labels)

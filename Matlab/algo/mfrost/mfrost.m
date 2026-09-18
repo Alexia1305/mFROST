@@ -195,9 +195,9 @@ for trials = 1:options.numTrials
     % UPDATE error 
     error_pre=0;
     for l=1:L
-        error_pre = error_pre + sqrt(1e-9+normX2(l)-norm(S(l,:,:),'fro')^2);
+        error_pre = error_pre + 1e-9+normX2(l)-norm(S(l,:,:),'fro')^2;
     end 
-    error_pre = error_pre/sum(normX);
+    error_pre = sqrt(error_pre / sum(normX.^2));
     error = error_pre;
 
     
@@ -299,9 +299,9 @@ for trials = 1:options.numTrials
         % UPDATE error 
         error=0;
         for l=1:L
-            error = error + sqrt(1e-9+normX2(l)-norm(S(l,:,:),'fro')^2);
+            error = error + 1e-9+normX2(l)-norm(S(l,:,:),'fro')^2;
         end 
-        error = error/sum(normX);
+        error = sqrt(error / sum(normX.^2));
         time{end+1} = toc(start_it);
         if error < options.delta
             break;

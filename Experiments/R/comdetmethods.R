@@ -6,7 +6,7 @@
 #' @export
 #' 
 #' 
-# To use mFROST 
+# To use mFROST, configure Python  
 library(reticulate)
 use_python("/home/pistou/miniconda3/envs/mdcbm/bin/python",
            required = TRUE)
@@ -198,7 +198,7 @@ comdetmethods <- function(Adj_list, K, method) {
       Adj_list_numpy <- lapply(Adj_list_norm, function(X) np$array(as.matrix(X)))
       X_list <- r_to_py(Adj_list_numpy)
     
-      res <- frost_sharedZ$mfrost_sharedZ(X_list, K, init_method='MF-SC-CA',init_seed=seed_for_python,numTrials=3L,time_limit=1000)
+      res <- frost_sharedZ$mfrost_sharedZ(X_list, K, init_method='USENC',init_seed=seed_for_python,numTrials=3L,time_limit=1000)
       labels <- py_to_r(res[[2]])
       community_memberships <- as.vector(labels + 1)
        
@@ -210,7 +210,7 @@ comdetmethods <- function(Adj_list, K, method) {
       Adj_list_numpy <- lapply(Adj_list, function(X) np$array(as.matrix(X)))
       X_list <- r_to_py(Adj_list_numpy)
     
-      res <- frost_sharedZ$mfrost_sharedZ(X_list, K, init_method='MF-SC-CA',init_seed=seed_for_python,numTrials=3L,time_limit=1000)
+      res <- frost_sharedZ$mfrost_sharedZ(X_list, K, init_method='USENC',init_seed=seed_for_python,numTrials=3L,time_limit=1000)
       labels <- py_to_r(res[[2]])
       community_memberships <- as.vector(labels + 1)
        
@@ -349,7 +349,7 @@ allmethods <- function(Adj_list, K, method) {
        
     }
 
-    if (method=="frost-us"){
+    if (method=="mfrost"){
       seed_for_python <- sample.int(.Machine$integer.max, 1)
       
       Adj_list_numpy <- lapply(Adj_list, function(X) np$array(as.matrix(X)))

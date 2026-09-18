@@ -22,7 +22,6 @@ clusterEvalQ(cl, {
   Sys.setenv(MKL_NUM_THREADS = "1")
 })
   clusterEvalQ(cl = cl, source("Simulations/run_all_methods.R"))
-  clusterEvalQ(cl = cl, source("Simulations/extrasimulations.R"))
   clusterExport(cl = cl, varlist = c("sim_setting", "parameters"),envir = environment()) 
   results <- parLapply(cl, 1:repetitions, function(seed) {
     generate_data <- sim_setting(parameters, seed)
@@ -60,7 +59,7 @@ iterate_parameters <- function(sim_setting, parameters_list, param_iter,
 #     cat("Seed:", seed, "\n")
 #     generate_data <- sim_setting(parameters, seed)
 #     res <- run_all_methods(generate_data$Adj_list,
-#                          generate_data$truecom)
+#                          generate_data$truecom,seed)
 
 #     res <- data.frame(
 #       Seed = seed,
@@ -93,8 +92,8 @@ run_all_methods <- function(Adj_list, truecoms,seed) {
   K <- length(unique(truecoms))
   
   # Note: to run graph-tool, uncomment the following lines and comment the next
-  # methods_to_run <- c("mfrost","dcmase", "ave_spherical", "sq-bias-adjusted","mase-spherical","lmfo", "graph-tool")
-  methods_to_run <- c("mfrost","frost-sharedZ-Anorm","frost-sharedZ")
+  methods_to_run <- c("mfrost","dcmase", "ave_spherical", "sq-bias-adjusted","mase-spherical","lmfo")
+ 
  
   results <- lapply(methods_to_run, function(method) {
     print(method)
@@ -102,7 +101,7 @@ run_all_methods <- function(Adj_list, truecoms,seed) {
   pred <- comdetmethods(Adj_list, K, method = method)
 
   err <- classError(pred, truecoms)$errorRate
-  nmi <- NMI(pred, truecoms)
+  nmi <- NMI(pred, truecoms, variant = "sum")
   ari <- adjustedRandIndex(pred, truecoms)
 
   c(
@@ -113,8 +112,8 @@ run_all_methods <- function(Adj_list, truecoms,seed) {
 })
 
 results <- do.call(rbind, results)
-#rownames(results) <- c("mFROST",  "DC-MASE","Sum A","Bias-adjusted SoS", "MASE","OLMF","graph-tool")
-rownames(results) <- c("mFROST","mFROST-Zshared-L","mFROST-Zshared")
+rownames(results) <- c("mFROST","DC-MASE","Sum A","Bias-adjusted SoS", "MASE","OLMF")
+
 
 return(results)
 }
