@@ -24,7 +24,9 @@ adjacencies_to_graphml <- function(Adj_list, filename) {
 }
 
 
-run_graph_tool <- function(Adj_list, K, id = NULL) {
+run_graph_tool <- function(Adj_list, K, id = NULL, seed=NULL, numTrials=1) {
+
+  if (is.null(seed)) seed <- sample.int(.Machine$integer.max, 1L)
 
   if (is.null(id)) {
     id <- round(runif(1) * 10000000)
@@ -41,7 +43,9 @@ run_graph_tool <- function(Adj_list, K, id = NULL) {
     "/home/pistou/miniconda3/envs/mdcbm/bin/python",
     "Python/graphtool-script.py",
     K,
-    id
+    id,
+    seed,
+    numTrials
   )
 
   status <- system(command_gt)

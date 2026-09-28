@@ -63,11 +63,11 @@ if __name__ == "__main__":
     data=build_AUCS("Data/AUCS/aucs_edgelist.txt","Data/AUCS/aucs_nodelist.txt")
     labels = np.array(data["labels"])
     A_list = data["A"]
-    np.random.seed(12)
+    np.random.seed(8)
     r=int(max(labels))
     # mFROST returns v the community assignments (v[i] is the community of the node i)
 
-    w, v, S, error_best= mfrost.mfrost(A_list,r)
+    w, v, S, error_best= mfrost.mfrost(A_list,r,verbosity=1)
 
     # Normalized mutual information for nodes with a label (not Nan)
     indices = np.where(~np.isnan(labels))[0]

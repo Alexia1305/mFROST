@@ -11,11 +11,18 @@ library(reticulate)
 use_python("/home/pistou/miniconda3/envs/mdcbm/bin/python",
            required = TRUE)
 sys <- import("sys")
-sys_path <- sys_path <- normalizePath("Python")
-sys$path <- c(sys_path, sys$path)
+python_dir <- normalizePath("Python", mustWork = TRUE)
+nfcce_dir <- normalizePath("Python/NFCCE", mustWork = TRUE)
+
+sys$path <- unique(c(nfcce_dir, python_dir, sys$path))
+
+# Modules existants
 frost <- import("mfrost.mfrost")
 frost_sharedZ <- import("mfrost.mfrost_sharedZ")
 np <- import("numpy")
+
+# Nouveau module : nom du fichier sans .py
+csnmtf <- import("csnmtf_R")
 
 source("R/Codes_Spectral_Matrix_Paul_Chen_AOS_2020.r")
 source("R/comdet-dcmase.R")
@@ -43,7 +50,11 @@ normalize_adj <- function(A, tau = NULL, tau_frac = 1) {
 }
 
 
-comdetmethods <- function(Adj_list, K, method) {
+comdetmethods <- function(Adj_list, K, method, seed=NULL) {
+   if (is.null(seed)) seed <- sample.int(.Machine$integer.max, 1L)
+  
+  
+  set.seed(seed)
   n <- ncol(Adj_list[[1]])
   
   #################################################################################
@@ -142,7 +153,7 @@ comdetmethods <- function(Adj_list, K, method) {
   #################################################################################
   if(method == "graph-tool") {
     # Note: this method requires graph-tool library to be installed https://graph-tool.skewed.de/
-    community_memberships <- run_graph_tool(Adj_list, K)
+    community_memberships <- run_graph_tool(Adj_list, K,seed, numTrials=3)
   }
   #################################################################################
   if(method == "score-onenetwork") {
@@ -163,7 +174,7 @@ comdetmethods <- function(Adj_list, K, method) {
     
 
     if (method=="mfrost"){
-      seed_for_python <- sample.int(.Machine$integer.max, 1)
+      seed_for_python <- as.integer(seed)
       
       Adj_list_numpy <- lapply(Adj_list, function(X) np$array(as.matrix(X)))
       X_list <- r_to_py(Adj_list_numpy)
@@ -177,7 +188,7 @@ comdetmethods <- function(Adj_list, K, method) {
      
       community_memberships <- comdet_dcmase(Adj_list, K, "kmeans")$community_memberships
       init_partition=np$array(community_memberships-1,dtype="int32")
-      seed_for_python <- sample.int(.Machine$integer.max, 1)
+      seed_for_python <- as.integer(seed)
       
       Adj_list_numpy <- lapply(Adj_list, function(X) np$array(as.matrix(X)))
       X_list <- r_to_py(Adj_list_numpy)
@@ -189,7 +200,7 @@ comdetmethods <- function(Adj_list, K, method) {
     
       if (method=="frost-sharedZ-Anorm"){
       
-      seed_for_python <- sample.int(.Machine$integer.max, 1)
+      seed_for_python <- as.integer(seed)
       
       # Apply to each layer, with a layer-specific tau (recommended in the multilayer setting)
       Adj_list_norm <- lapply(Adj_list, function(A) normalize_adj(A))
@@ -205,7 +216,7 @@ comdetmethods <- function(Adj_list, K, method) {
     }
     if (method=="frost-sharedZ"){
       
-      seed_for_python <- sample.int(.Machine$integer.max, 1)
+      seed_for_python <- as.integer(seed)
       
       Adj_list_numpy <- lapply(Adj_list, function(X) np$array(as.matrix(X)))
       X_list <- r_to_py(Adj_list_numpy)
@@ -215,11 +226,23 @@ comdetmethods <- function(Adj_list, K, method) {
       community_memberships <- as.vector(labels + 1)
        
     }
+    
+    if (method=="csnmtf"){
+      seed_for_python <- as.integer(seed)
+      Adj_list_numpy <- lapply(Adj_list, function(X) np$array(as.matrix(X)))
+      X_list <- r_to_py(Adj_list_numpy)
+      res <- csnmtf$CSNMTF_algo(X_list, K,alpha=0.1,seed=seed_for_python,numTrials=3L)
+      labels <- py_to_r(res)
+      community_memberships <- as.vector(labels + 1)
+    }
 
   return(community_memberships)
 }
 
-allmethods <- function(Adj_list, K, method) {
+allmethods <- function(Adj_list, K, method, seed=NULL) {
+  if (is.null(seed)) seed <- sample.int(.Machine$integer.max, 1L)
+
+  set.seed(seed)
   n <- ncol(Adj_list[[1]])
   
   #################################################################################
@@ -318,7 +341,8 @@ allmethods <- function(Adj_list, K, method) {
   #################################################################################
   if(method == "graph-tool") {
     # Note: this method requires graph-tool library to be installed https://graph-tool.skewed.de/
-    community_memberships <- run_graph_tool(Adj_list, K)
+    gt <- reticulate::import("graph_tool")
+    community_memberships <- run_graph_tool(Adj_list, K, seed, numTrials=10L)
   }
   #################################################################################
   if(method == "score-onenetwork") {
@@ -336,26 +360,14 @@ allmethods <- function(Adj_list, K, method) {
     community_memberships <- kmeans(V/rownorms, K, nstart = 100)$cluster
   }
    #################################################################################
-    if (method=="frost-mf"){
-      
-      seed_for_python <- sample.int(.Machine$integer.max, 1)
-      
-      Adj_list_numpy <- lapply(Adj_list, function(X) np$array(as.matrix(X)))
-      X_list <- r_to_py(Adj_list_numpy)
-    
-      res <- frost$mfrost(X_list, K, init_method='MF-SC-CA',init_seed=seed_for_python,numTrials=50L,time_limit=1000)
-      labels <- py_to_r(res[[2]])
-      community_memberships <- labels + 1
-       
-    }
-
+   
     if (method=="mfrost"){
-      seed_for_python <- sample.int(.Machine$integer.max, 1)
+      seed_for_python <- as.integer(seed)
       
       Adj_list_numpy <- lapply(Adj_list, function(X) np$array(as.matrix(X)))
       X_list <- r_to_py(Adj_list_numpy)
       
-      res <- frost$mfrost(X_list, K, init_method='USENC',init_seed=seed_for_python,numTrials=10L,time_limit=1000)
+      res <- frost$mfrost(X_list, K, init_method='USENC',init_seed=seed_for_python,numTrials=10L)
       labels <- py_to_r(res[[2]])
       community_memberships <- labels + 1
     }
@@ -364,31 +376,20 @@ allmethods <- function(Adj_list, K, method) {
      
       community_memberships <- comdet_dcmase(Adj_list, K, "kmeans")$community_memberships
       init_partition=np$array(community_memberships-1,dtype="int32")
-      seed_for_python <- sample.int(.Machine$integer.max, 1)
+      seed_for_python <- as.integer(seed)
       
       Adj_list_numpy <- lapply(Adj_list, function(X) np$array(as.matrix(X)))
       X_list <- r_to_py(Adj_list_numpy)
       
-      res <- frost$mfrost(X_list, K, init_partition=init_partition,init_seed=seed_for_python,numTrials=50L,time_limit=1000)
+      res <- frost$mfrost(X_list, K, init_partition=init_partition,init_seed=seed_for_python,numTrials=10L,time_limit=1000)
       labels <- py_to_r(res[[2]])
       community_memberships <- labels + 1
     }
-    if (method=="mf"){
-      
-      
-      seed_for_python <- sample.int(.Machine$integer.max, 1)
-      
-      Adj_list_numpy <- lapply(Adj_list, function(X) np$array(as.matrix(X)))
-      X_list <- r_to_py(Adj_list_numpy)
-     
-      res <- frost$mfrost(X_list, K, maxiter=as.integer(0), init_method='MF-SC-CA',init_seed=seed_for_python)
-      labels <- py_to_r(res[[2]])
-      community_memberships <- labels + 1
-      }
+   
       if (method=="us"){
       
       
-      seed_for_python <- sample.int(.Machine$integer.max, 1)
+      seed_for_python <- as.integer(seed)
       
       Adj_list_numpy <- lapply(Adj_list, function(X) np$array(as.matrix(X)))
       X_list <- r_to_py(Adj_list_numpy)
@@ -398,6 +399,15 @@ allmethods <- function(Adj_list, K, method) {
       labels <- py_to_r(res[[2]])
       community_memberships <- labels + 1 
       }
+
+    if (method=="csnmtf"){
+      seed_for_python <- as.integer(seed)
+      Adj_list_numpy <- lapply(Adj_list, function(X) np$array(as.matrix(X)))
+      X_list <- r_to_py(Adj_list_numpy)
+      res <- csnmtf$CSNMTF_algo(X_list, K,alpha=0.1,seed=seed_for_python,numTrials=10L)
+      labels <- py_to_r(res)
+      community_memberships <- labels + 1 
+    }
 
   return(community_memberships)
 }

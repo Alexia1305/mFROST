@@ -26,6 +26,7 @@ ave_degs <- seq(2, 24, 2)
 # Same B same theta
 parameters_list <- ave_degs
 param_iter = ave_degs/150
+
 results_simulation1s <- iterate_parameters(sim_setting = simulation1s, parameters_list, param_iter, num_replications)
 save(results_simulation1s,file="sim1s.RData")
 resume <- results_simulation1s %>%
@@ -246,7 +247,7 @@ different_scenarios_metric <- different_scenarios %>%
 png("Simulation-rep100-6scenarios-flipped.png", width = 1200, height = 1500, res = 200)
 
 
-p <- make_ggplot_multipleBT2(different_scenarios_metric, "Edge density", xbreaks = c(0.01,0.04,0.07,0.10,0.13,0.16), metric,methodnames = c("mFROST","OLMF","DC-MASE","graph-tool","Sum A","Bias-adjusted SoS","MASE"),ylim = c(0,0.7))#, "graph-tool"))
+p <- make_ggplot_multipleBT2(different_scenarios_metric, "Edge density", xbreaks = c(0.01,0.04,0.07,0.10,0.13,0.16), metric,methodnames = c("mFROST","OLMF","DC-MASE","graph-tool","Sum A","Bias-adjusted SoS","MASE","CSNMTF"),ylim = c(0,0.7))#, "graph-tool"))
 ggsave(
   filename = "simulations.png",
   plot = p,              # ton objet ggplot

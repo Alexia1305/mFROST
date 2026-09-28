@@ -7,18 +7,18 @@ from sklearn.metrics import normalized_mutual_info_score,adjusted_rand_score
 from mfrost.consensus import MatrixFreeSpectralClusteringCoAssociation, USENC_ConsensusFunction
 import numpy as np
 import math
+
+# math.cbrt is available from Python 3.11; keep older Python compatible.
+_scalar_cbrt = getattr(math, "cbrt", np.cbrt)
 from .SVCA import svca
 from scipy.sparse import diags
-
-# import Cluster_Ensembles as CE
-
 
 # -----------------------------------------------
 # ---------------- frost ----------------
 # -----------------------------------------------
 
-def mfrost(X_list, r, numTrials=10, maxiter=50, delta=1e-6, time_limit=None, init_method='USENC',
-                     init_partition=None, verbosity=0):
+def mfrost(X_list, r, numTrials=10, maxiter=50, delta=1e-5, time_limit=None, init_method='USENC',
+                     init_partition=None, verbosity=0, init_seed=None):
     """
     Heuristic algorithm for multilayer community detection via joint nonnegative matrix trifactorization.
     Estimates nonnegative matrices S_l>=0 and Z_l>=0 that minimize:
@@ -74,7 +74,8 @@ def mfrost(X_list, r, numTrials=10, maxiter=50, delta=1e-6, time_limit=None, ini
              (1 for messages, 0 for silent mode).
          init_partition : np.array, shape (n,), default=None
             Initial node partition 
-         
+         init_seed : float, default=None
+             Random seed for the initialization for the experiments
 
 
      Returns:
@@ -85,8 +86,8 @@ def mfrost(X_list, r, numTrials=10, maxiter=50, delta=1e-6, time_limit=None, ini
          S_best : ndarray of shape (L, r, r)
              Layer-specific community interaction matrices S_l.
          error_best : float
-             Relative error sum_l ||X_l - Z_l S_l Z_l'||_F / ||X_l||_F.
-         
+             Relative error sqrt( sum_l ||X_l - Z_l S_l Z_l'||^2_F / (sum_l ||X_l||_F^2)).
+    
      """
     
     convergence_data = []
@@ -119,18 +120,23 @@ def mfrost(X_list, r, numTrials=10, maxiter=50, delta=1e-6, time_limit=None, ini
         degrees = np.asarray(X.sum(axis=1)).ravel()
         degrees_layers.append(degrees)
 
+    # X never changes: reuse its rows, diagonal and edge list 
+    X_cache = _prepare_X_cache(X_list)
+
     if verbosity > 0:
         print(f'Running {numTrials} Trials in Series')
 
     # Restarts with different initialization   
 
     for trial in range(numTrials):
-        # Metrics for convergence tests 
         
         # Initialization of Z_l stored by v and w
         if init_partition is not None:
-            #v=init_partition.copy()
-            v = np.ones(n, dtype=int)
+            v = np.asarray(init_partition)
+            if (v.shape != (n,) or not np.issubdtype(v.dtype, np.integer)
+                    or np.any(v < 0) or np.any(v >= r)):
+                raise ValueError("init_partition must contain n integer labels in [0, r).")
+            v = v.copy()
             w = np.zeros((L, n))
             for l in range(L):
                 w[l] = initialize_w_values(X_list[l], v)
@@ -140,6 +146,9 @@ def mfrost(X_list, r, numTrials=10, maxiter=50, delta=1e-6, time_limit=None, ini
             if L == 1 :
                 init_method = 'onelayer'
 
+            if init_seed is not None:
+                init_seed += 10 * trial
+                np.random.seed(init_seed)
 
             if init_method == 'random':
                 base = np.arange(r)
@@ -149,9 +158,7 @@ def mfrost(X_list, r, numTrials=10, maxiter=50, delta=1e-6, time_limit=None, ini
                 w = np.zeros((L, n))
                 for l in range(L):
                     w[l] = initialize_w_values(X_list[l], v)
-                # for l in range(L):
-                #     w[l], v = PowMethOTRISYMNMFFixed(X_list[l], r, labels_final, w[l], maxiter=50, timelimit=200)
-
+               
             elif init_method == 'onelayer':
                 w = np.zeros((L, n))
                 lr = np.random.randint(0, L)  # Choose a random layer
@@ -161,28 +168,17 @@ def mfrost(X_list, r, numTrials=10, maxiter=50, delta=1e-6, time_limit=None, ini
                     if l == lr:
                         continue
                     w[l] = initialize_w_values(X_list[l], v)
-                # for l in range(L):
-                #     w[l], v = PowMethOTRISYMNMFFixed(X_list[l], r, labels_final, w[l], maxiter=50, timelimit=200)
-
+                
 
             else:
 
                 w, v = initialize_Z_alllayers(X_list, r, init_method)
 
         # Normalization of Z (w)
-        for l in range(L):
-            nw = np.zeros(r)
-            for i in range(n):
-                nw[v[i]] += w[l, i] ** 2
-            nw = np.sqrt(nw)
-
-            denom = nw[v]
-            mask = denom != 0
-            w[l, mask] /= denom[mask]
-            w[l, ~mask] = 0
+        _normalize_w(w, v, r)
 
         # Compute of S
-        S = update_S(X_list, r, w, v)
+        S = update_S(X_list, r, w, v, X_cache=X_cache)
 
         if verbosity:
             print('Time', time.time() - start_time)
@@ -191,11 +187,7 @@ def mfrost(X_list, r, numTrials=10, maxiter=50, delta=1e-6, time_limit=None, ini
             prev_error += compute_error(normX[l], S[l])**2
         prev_error=np.sqrt(prev_error/sum(x ** 2 for x in normX))
         error = prev_error
-
-       
-
         
-    
         for iteration in range(maxiter):
            
             if time_limit and time.time() - start_time > time_limit:
@@ -203,17 +195,15 @@ def mfrost(X_list, r, numTrials=10, maxiter=50, delta=1e-6, time_limit=None, ini
                 break
             
            
-            w, v = update_Z(X_list,degrees_layers, S, w, v)
+            w, v = update_Z(X_list, degrees_layers, S, w, v, X_cache=X_cache)
 
-            S = update_S(X_list, r, w, v)
+            S = update_S(X_list, r, w, v, X_cache=X_cache)
 
             prev_error = error
             error = 0
             for l in range(L):
                 error += compute_error(normX[l], S[l])**2
             error=np.sqrt(error/sum(x ** 2 for x in normX))
-
-           
 
             if delta:
                 if error < delta or abs(prev_error - error) < delta:
@@ -224,7 +214,6 @@ def mfrost(X_list, r, numTrials=10, maxiter=50, delta=1e-6, time_limit=None, ini
                  w.copy(), v.copy(), S.copy(), error
             )
        
-
         if verbosity > 0:
             print(f'Trial {trial + 1}/{numTrials} with {init_method}: Error {error:.4e} | Best: {error_best:.4e}')
             print('Time', time.time() - start_time)
@@ -233,67 +222,78 @@ def mfrost(X_list, r, numTrials=10, maxiter=50, delta=1e-6, time_limit=None, ini
                 print('Time limit passed')
                 break
     
-   
+    return w_best, v_best, S_best, error_best
+def _prepare_X_cache(X_list):
+    """
+    rows[i][l] contains the column indices and values of X_l[i, :],
+    excluding the diagonal. For rows without a diagonal entry these are
+    views into the CSR arrays, with no copy of the numerical data.
+    The cache uses O(sum_l nnz(X_l) + L*n) extra storage, 
+    """
+    n = X_list[0].shape[0]
+    rows = [[] for _ in range(n)]
+    diagonal = np.empty((len(X_list), n))
+    edges = []
+    for l, X in enumerate(X_list):
+        X = X.tocsr()
+        diagonal[l] = X.diagonal()
+        edges.append(find(X))
+        for i in range(n):
+            start, end = X.indptr[i:i + 2]
+            cols = X.indices[start:end]
+            vals = X.data[start:end]
+            keep = cols != i
+            if not np.all(keep):
+                cols, vals = cols[keep], vals[keep]
+            rows[i].append((cols, vals))
+    return {"rows": rows, "diagonal": diagonal, "edges": edges}
 
-        return w_best, v_best, S_best, error_best
 
-def update_Z(X_list, degrees_layers, S, w, v):
+def _normalize_w(w, v, r):
+    """ Normalization of w (ZTZ=I)"""
+    for wl in w:
+        nw = np.sqrt(np.bincount(v, weights=wl**2, minlength=r))
+        denom = nw[v]
+        nonzero = denom != 0
+        np.divide(wl, denom, out=wl, where=nonzero)
+        wl[~nonzero] = 0
+
+
+
+def update_Z(X_list, degrees_layers, S, w, v, X_cache=None):
+    """Update of Z """
     L = len(X_list)
     n = X_list[0].shape[0]
     r = S.shape[1]
+    if X_cache is None:
+        X_cache = _prepare_X_cache(X_list)
+    rows = X_cache["rows"]
+    Xii = X_cache["diagonal"]
 
-    """
-    # Pre-calculations to avoid a double loop on ‘n’
-    """
-    wp2 = np.zeros((L, r))
+    # Sum w_j^2 once per community, then multiply by S^2. 
     S2 = S**2
-    w2 = w**2
-    Xii = np.array([X.diagonal() for X in X_list])
-
-    for l in range(L):
-        for k in range(r):
-            wp2[l, k] = np.sum(w2[l]*S2[l, v, k])
+    community_norm2 = np.array([
+        np.bincount(v, weights=wl**2, minlength=r) for wl in w
+    ])
+    wp2 = np.einsum("lj,ljk->lk", community_norm2, S2)
+    diagS = np.diagonal(S, axis1=1, axis2=2)
+    cubic_a = 4 * np.diagonal(S2, axis1=1, axis2=2)
+    has_degree = np.asarray(degrees_layers) != 0
+    c0_all_layers = np.empty((L, r))
+    wi = np.empty(L)
 
     # Update of each row (node)
     for i in np.random.permutation(n):
         vi_new = -1
-        wi_new = np.full(L, -1)
+        wi_new = np.empty(L)
         f_new = np.inf
-        wi = np.empty(L)
-
-
-        # Pre computation to avoid loop on k (only depends of i and l)
-
-        neighbors = []
-        neighbor_vals = []
-        c0_all_layers = []
+        old_contribution = (w[:, i, None] * S[:, v[i], :]) ** 2
+        c1_all = 2 * (wp2 - old_contribution) - 2 * diagS * Xii[:, i, None]
 
         
-        for l in range(L):
-            X = X_list[l]
-
-            start = X.indptr[i]
-            end = X.indptr[i + 1]
-
-            cols = X.indices[start:end]
-            vals = X.data[start:end]
-
-            mask = cols != i
-
-            selected_cols = cols[mask]
-            selected_vals = vals[mask]
-
-            neighbors.append(selected_cols)
-            neighbor_vals.append(selected_vals)
-
-            weights = selected_vals * w[l, selected_cols]
-
-            c0_all = -4 * (
-                weights @ S[l, v[selected_cols], :]
-            )
-
-            c0_all_layers.append(c0_all)
-
+        for l, (cols, vals) in enumerate(rows[i]):
+            weights = vals * w[l, cols]
+            c0_all_layers[l] = -4 * (weights @ S[l, v[cols], :])
 
         # Test each community
         for k in range(r):
@@ -301,17 +301,13 @@ def update_Z(X_list, degrees_layers, S, w, v):
             erreur = 0
             # For each layer, find the best value for w[i] with v[i] = k
             for l in range(L):
-                if degrees_layers[l][i]==0 :
+                if not has_degree[l, i]:
                     wi[l] = 0
                 else:
-                    c3 = S2[l, k, k]
-                    c1 = 2 * (wp2[l, k] - (w[l, i] * S[l, v[i], k]) ** 2) - 2 * S[l, k, k] * Xii[l, i]
-
-        
-                    c0 = c0_all_layers[l][k]
-
                     # Cardano method to find the roots and return best solution >=0 
-                    x, min_value = cardan_depressed(4 * c3, 2 * c1, c0)
+                    x, min_value = cardan_depressed(
+                        cubic_a[l, k], 2 * c1_all[l, k], c0_all_layers[l, k]
+                    )
 
                     wi[l] = x
 
@@ -319,88 +315,75 @@ def update_Z(X_list, degrees_layers, S, w, v):
 
             if erreur < f_new:
                 f_new = erreur
-                wi_new = wi[:].copy()
+                wi_new[:] = wi
                 vi_new = k
 
-        for l in range(L):
-            for k in range(r):
-                wp2[l, k] = wp2[l, k] - (w[l, i] * S[l, v[i], k]) ** 2 + (wi_new[l] * S[l, int(vi_new), k]) ** 2
+        wp2 = wp2 - old_contribution + (wi_new[:, None] * S[:, vi_new, :]) ** 2
 
         # Update v and w
         v[i] = vi_new
-        for l in range(L):
-            w[l, i] = wi_new[l]
+        w[:, i] = wi_new
 
     # Normalization of Z (w)
-    for l in range(L):
-        nw = np.zeros(r)
-        for i in range(n):
-            nw[v[i]] += w[l, i] ** 2
-        nw = np.sqrt(nw)
-
-        denom = nw[v]
-        mask = denom != 0
-        w[l, mask] /= denom[mask]
-        w[l, ~mask] = 0
+    _normalize_w(w, v, r)
 
     return w, v
 
 
 def cardan_depressed(a, c, d, tol=1e-12):
-    """ Cardano formula to find the roots of ax^3+cx+d=0 """
-    roots=[]
+    """Minimize a*x**4/4 + c*x**2/2 + d*x over nonnegative stationary roots.
+    """
+    a, c, d = float(a), float(c), float(d)
+    roots = ()
     if abs(a) < tol:
         if abs(c) > tol:
-            roots.append(-d / c)
+            roots = (-d / c,)
     else:
-
-        # b=0 t^3+pt+q
         p = c / a
         q = d / a
-        Delta = 4 * (p ** 3) + 27 * (q ** 2)
-
+        Delta = 4 * p**3 + 27 * q**2
         if abs(Delta) < tol:
-            if abs(p) < tol and abs(q) < tol:
-                roots.append(0)
-            else: 
-                roots.append(3*q/p,-3*q/(2*p))
-        elif Delta > 0:  # one real solution
-            sqrtD = np.sqrt(Delta / 27)
-            roots.append(np.cbrt((-q + sqrtD) / 2) + np.cbrt((-q - sqrtD) / 2))
+            if p == 0:
+                roots = (_scalar_cbrt(-q),)
+            elif abs(p) < tol and abs(q) < tol:
+                roots = (0.0,)
+            else:
+                roots = (3*q/p, -3*q/(2*p))
+        elif Delta > 0:
+            sqrtD = math.sqrt(Delta / 27)
+            roots = (_scalar_cbrt((-q + sqrtD) / 2)
+                     + _scalar_cbrt((-q - sqrtD) / 2),)
+        else:
+            radius = 2 * math.sqrt(-p / 3)
+            cos_arg = -q / 2 * math.sqrt(-27 / p**3)
+            cos_arg = max(-1.0, min(1.0, cos_arg))
+            theta = math.acos(cos_arg) / 3
+            roots = (radius * math.cos(theta),
+                     radius * math.cos(theta + 2 * math.pi / 3),
+                     radius * math.cos(theta + 4 * math.pi / 3))
 
-        else:  # 3 real different solutions or multiple solution
-
-            r = 2 * np.sqrt(-p / 3)
-            cos_arg = -q / 2 * np.sqrt(-27 / (p ** 3))
-            if cos_arg > 1.0:
-                cos_arg = 1.0
-            elif cos_arg < -1.0:
-                cos_arg = -1.0
-            theta = np.arccos(cos_arg) / 3
-            roots.append( r * np.cos(theta))
-            roots.append( r * np.cos(theta + 2 * np.pi / 3))
-            roots.append( r * np.cos(theta + 4 * np.pi / 3))
-
-    x = 0
-    min_value = a/4 * (x ** 4) + c/2 * (x ** 2) + d * x
+    x = 0.0
+    min_value = 0.0
     for sol in roots:
-        value = a/4 * (sol ** 4) + c/2 * (sol ** 2) + d * sol
-        if sol > 0 and value < min_value:
-            x, min_value = sol, value
-    return x, min_value 
+        if sol > 0:
+            value = a/4 * sol**4 + c/2 * sol**2 + d * sol
+            if value < min_value:
+                x, min_value = sol, value
+    return x, min_value
 
 
-def update_S(X_list, r, w, v):
+def update_S(X_list, r, w, v, X_cache=None):
+    """Compute S= Z_l.T @ X_l @ Z_l """
     L = len(X_list)
     S = np.zeros((L, r, r))
+    edges = X_cache["edges"] if X_cache is not None else [find(X) for X in X_list]
     for l in range(L):
-
-        # Get the row indices, column indices, and values of the non-zero elements in the sparse matrix X
-        i, j, val = find(X_list[l])
-
-        # Loop through the non-zero elements of X
-        for k in range(len(val)):
-            S[l, v[i[k]], v[j[k]]] += w[l, i[k]] * w[l, j[k]] * val[k]
+        i, j, val = edges[l]
+        community_pair = v[i] * r + v[j]
+        weights = w[l, i] * w[l, j] * val
+        S[l] = np.bincount(
+            community_pair, weights=weights, minlength=r*r
+        ).reshape(r, r)
     return S
 
 
@@ -480,7 +463,7 @@ def extract_w_v(Z):
     r = Z.shape[1]
     v = np.argmax(Z, axis=1)
 
-    # attribuer aléatoirement un entier entre 0 et r-1 pour ces lignes
+    
     rows_all_zero = np.all(Z == 0, axis=1)
     v[rows_all_zero] = np.random.randint(0, r, size=np.sum(rows_all_zero))
     return w, v
@@ -573,4 +556,3 @@ def compute_diff_Z(w,v,prec_w,prec_v):
     previous_norm_sq = np.sum(prec_w**2)
 
     return np.sqrt(diff_norm_sq / previous_norm_sq)
-

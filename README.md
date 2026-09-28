@@ -74,6 +74,7 @@ The synthetic experiments use the settings of Agterberg, Lubberts, and Arroyo an
 
 #### Method
 - *Experiments/Python/mfrost*: python package for the mFROST method 
+- *Experiments/Python/NFCCE*: python for the CSNMTF method 
 - *Experiments/Python/graphtool-script.py*: wrapper for running graphtool method.
 - *Experiments/R/dcmase.R*: implements the degree-corrected adjacency spectral embedding.
 - *Experiments/R/comdet-dcmase.R*: implements a community detection method based on DC-MASE.

@@ -245,12 +245,12 @@ different_scenarios_metric <- different_scenarios %>%
 png("Simulation-rep100-6scenarios-flipped.png", width = 1200, height = 1500, res = 200)
 
 
-p <- make_ggplot_multipleBT2(different_scenarios_metric, "Number of layers", xbreaks = c(1,10,20,30,40,50), metric,methodnames = c("mFROST","OLMF","DC-MASE","graph-tool","Sum A","Bias-adjusted SoS","MASE"),ylim = c(0,0.6))#, "graph-tool"))
+p <- make_ggplot_multipleBT2(different_scenarios_metric, "Number of layers", xbreaks = c(1,10,20,30,40,50), metric,methodnames = c("mFROST","OLMF","DC-MASE","graph-tool","Sum A","Bias-adjusted SoS","MASE","CSNMTF"),ylim = c(0,0.6))#, "graph-tool"))
 ggsave(
   filename = "simulations.png",
   plot = p,              # ton objet ggplot
-  width = 8,
-  height = 6,
+  width = 7,
+  height = 4.5,
   units = "in",
   dpi = 600,
   bg = "white"

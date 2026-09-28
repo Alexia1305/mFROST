@@ -319,32 +319,47 @@ build_caltech <- function(labels_file, edges_file) {
 }
 
 ##################### Methods #############################################################
-run_all_methods <- function(Adj_list, truecoms) {
-  set.seed(42)
+run_all_methods <- function(Adj_list, truecoms, dataset,
+                            numTrials = 2L, seed = 8L,
+                            output_dir = "results") {
+  # only keep the known labels for AUCS 
   idx <- !is.na(truecoms)
   K <- length(unique(truecoms[idx]))
-  
-   methods_to_run <- c("graph-tool","mfrost","dcmase","ave_spherical",
-                       "sq-bias-adjusted","mase-spherical")
+
+  methods <- c("graph-tool", "mfrost", "dcmase", "ave_spherical","sq-bias-adjusted", "mase-spherical","csnmtf","lmfo")
  
-  results <- lapply(methods_to_run, function(method) {
-    print(method)
-    
-    labels <- allmethods(Adj_list, K, method = method)
-    
-    res<-list(
-      NMI = NMI(truecoms[idx], as.vector(labels)[idx],  variant = "sum"),
-      errorRate = classError(labels[idx], truecoms[idx])$errorRate,
-      ARI = ARI(truecoms[idx], as.vector(labels)[idx])
+  results <- lapply(methods, function(method) {
+    message("Method: ", method)
+    scores <- matrix(NA_real_, nrow = numTrials, ncol = 3)
+
+    for (t in seq_len(numTrials)) {
+       message("Test: ",t)
+      trial_seed <- as.integer(seed + t - 1L)
+      labels <- as.vector(allmethods(Adj_list, K, method = method,seed=trial_seed))
+      stopifnot(length(labels) == length(truecoms))
+
+      scores[t, ] <- c(
+        NMI(truecoms[idx], labels[idx], variant = "sum"),
+        ARI(truecoms[idx], labels[idx]),
+        classError(labels[idx], truecoms[idx])$errorRate
+      )
+    }
+
+    data.frame(
+      Dataset = dataset,
+      Method = method,
+      NMI_mean = mean(scores[, 1]), NMI_sd = sd(scores[, 1]),
+      ARI_mean = mean(scores[, 2]), ARI_sd = sd(scores[, 2]),
+      errorRate_mean = mean(scores[, 3]), errorRate_sd = sd(scores[, 3])
     )
-    print(res)
   })
-  
-  # names(results) <- c("graph-tool","FROST_MF","FROST_US","FROST_DCMASE",
-  #                     "US","MF","OLMF","DC_MASE","Sum A",
-  #                     "S-A^2-Bias-adj","MASE")
-  names(results) <- c("graph-tool","mfrost","dcmase","ave_spherical",
-                       "sq-bias-adjusted","mase-spherical")
+
+  results <- do.call(rbind, results)
+  dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+  write.csv(results,
+            file.path(output_dir, paste0(dataset, "_results.csv")),
+            row.names = FALSE)
+
   return(results)
 }
 
@@ -587,7 +602,15 @@ multilayer_properties <- function(adj_list) {
 #data <- build_citeseer_multilayer("Data/citeseer/citeseer.content", "Data/citeseer/citeseer.cites")
 data <- build_AUCS("Data/AUCS/aucs_edgelist.txt","Data/AUCS/aucs_nodelist.txt")
 #data <- build_caltech("Data/caltech_all/labels.txt","Data/caltech_all/edges.txt")
-#data <- build_caltech("Data/caltech_all/labels.txt","Data/caltech_all/edges.txt")
+
 
 #properties <- multilayer_properties(data$A)
-results<-run_all_methods(data$A,data$labels)
+results<-run_all_methods(data$A,data$labels,"AUCS")
+# Tableau récapitulatif
+print(results$summary)
+
+write.csv(
+  results$summary,
+  "results_mean_std.csv",
+  row.names = FALSE
+)

@@ -420,12 +420,12 @@ def test_scalability(A_list,r,labels):
 
 if __name__ == "__main__":
 
-    #data = build_caltech("../Data/caltech_all/labels.txt", "../Data/caltech_all/edges.txt")
+    data = build_caltech("../Data/caltech_all/labels.txt", "../Data/caltech_all/edges.txt")
     #data= build_cora_multilayer("../Data/cora/cora.content","../Data/cora/cora.cites",k=20)
-    data= build_citeseer_multilayer("../Data/citeseer/citeseer.content","../Data/citeseer/citeseer.cites",k=20)
+    #data= build_citeseer_multilayer("../Data/citeseer/citeseer.content","../Data/citeseer/citeseer.cites",k=20)
     #data=build_AUCS("../Data/AUCS/aucs_edgelist.txt","../Data/AUCS/aucs_nodelist.txt")
     labels = np.array(data["labels"])
     A_list = data["A"]
-    np.random.seed(100)
+    np.random.seed(101)
     print(int(max(labels)))
     test_scalability(A_list,int(max(labels)), labels)

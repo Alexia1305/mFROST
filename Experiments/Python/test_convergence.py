@@ -483,7 +483,6 @@ if __name__ == "__main__":
     labels = np.array(data["labels"])
     A_list = data["A"]
    
-    np.random.seed(100)
+    np.random.seed(101)
 
     test_convergence(A_list,int(max(labels)), labels)
-    

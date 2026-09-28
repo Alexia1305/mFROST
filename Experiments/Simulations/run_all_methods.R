@@ -92,13 +92,14 @@ run_all_methods <- function(Adj_list, truecoms,seed) {
   K <- length(unique(truecoms))
   
   # Note: to run graph-tool, uncomment the following lines and comment the next
-  methods_to_run <- c("mfrost","dcmase", "ave_spherical", "sq-bias-adjusted","mase-spherical","lmfo")
+  methods_to_run <- c("mfrost","dcmase", "ave_spherical", "sq-bias-adjusted","mase-spherical","lmfo","graph-tool","frost-sharedZ","frost-sharedZ-Anorm","csnmtf")
+  
  
  
   results <- lapply(methods_to_run, function(method) {
     print(method)
-    set.seed(seed)
-  pred <- comdetmethods(Adj_list, K, method = method)
+  
+  pred <- comdetmethods(Adj_list, K, method = method, seed=seed)
 
   err <- classError(pred, truecoms)$errorRate
   nmi <- NMI(pred, truecoms, variant = "sum")
@@ -112,7 +113,7 @@ run_all_methods <- function(Adj_list, truecoms,seed) {
 })
 
 results <- do.call(rbind, results)
-rownames(results) <- c("mFROST","DC-MASE","Sum A","Bias-adjusted SoS", "MASE","OLMF")
+rownames(results) <- c("mFROST","DC-MASE","Sum A","Bias-adjusted SoS", "MASE","OLMF","graph-tool","mFROST-Zshared","mFROST-Zshared-L","CSNMTF")
 
 
 return(results)

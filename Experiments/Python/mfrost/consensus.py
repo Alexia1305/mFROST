@@ -257,7 +257,7 @@ def USENC_ConsensusFunction(baseCls, k):
 # -----------------------------
 # Tcut for Bipartite Graph
 # -----------------------------
-def Tcut_for_bipartite_graph(B, Nseg, maxKmIters=100, cntReps=3):
+def Tcut_for_bipartite_graph(B, Nseg, maxKmIters=100, cntReps=20):
     """
     B - |X|-by-|Y| cross-affinity matrix
     """

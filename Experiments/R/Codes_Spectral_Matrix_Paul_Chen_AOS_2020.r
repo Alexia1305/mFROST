@@ -75,7 +75,7 @@ dcspectral<-function(x,n,k)
   rownorm<-apply(specmat,1,function(a){(sum(a^2))^0.5})
   rownorm<-ifelse(rownorm < 10^(-06),10^(-06),rownorm)
   specnorm<-specmat/rownorm
-  speck<-kmeans(specnorm,k, nstart = 5)
+  speck<-kmeans(specnorm,k, nstart = 100)
   return(speck$cluster)
 }
 
@@ -160,10 +160,10 @@ ustar<- ustareigen$vectors[,1:k]
   print(t)
 }
   specclus<-lapply(ulist,function(r){
-    specu<-kmeans(r,k)
+    specu<-kmeans(r,k,nstart = 100)
     return(specu$cluster)
     })
-  specstar<-kmeans(ustar,k)
+  specstar<-kmeans(ustar,k,nstart = 100)
   specclus[[M+1]]<-specstar$cluster
     specclus[[M+2]]<-Reduce("+",lapply(1:M,function(m){
       y=solve_LSAP(table(specclus[[m]],specclus[[M+1]]),maximum=TRUE)
@@ -186,7 +186,7 @@ meancluster<-function(x,n,k)
   lapmean<-Reduce("+",laplist)
   spectra<-eigen(lapmean)
   umean<-spectra$vectors[,1:k]
-  specmean<-kmeans(umean,k)
+  specmean<-kmeans(umean,k,nstart = 100)
   return(specmean$cluster)
 }
 
@@ -206,7 +206,7 @@ usumlist<- lapply(1:M,function(m){
 usum<-Reduce('+',usumlist)
 ustareigen <- eigen(usum)
 ustar<- ustareigen$vectors[,1:k]
-  specmean<-kmeans(ustar,k)
+  specmean<-kmeans(ustar,k,nstart = 100)
   return(specmean$cluster)
 }
 
@@ -226,7 +226,7 @@ meanadj<-function(x,n,k)
   lap=deg%*%adjsum%*%deg
   spectra<-eigen(adjsum)
   umean<-spectra$vectors[,1:k]
-  specmean<-kmeans(umean,k)
+  specmean<-kmeans(umean,k,nstart = 100)
   return(specmean$cluster)
 }
 
@@ -289,7 +289,7 @@ param<-optimized$par
 ustar<-matrix(param[1:(n*k)],n,k)
 lambda<-lapply(1:M,function(m){return(matrix(param[(n*k+(m-1)*k^2+1):(n*k+m*k^2)],k,k))})
 
-  specstar<-kmeans(ustar,k)
+  specstar<-kmeans(ustar,k,nstart = 100)
   specclus<-specstar$cluster
   return(specclus)
 
@@ -335,7 +335,7 @@ ulist<- lapply(1:M,function(m){
   rownorm<-apply(specmat,1,function(a){(sum(a^2))^0.5})
   rownorm<-ifelse(rownorm < 10^(-06),10^(-06),rownorm)
   specnorm<-specmat/rownorm
-  specm<-kmeans(specnorm,k,nstart=5)$cluster
+  specm<-kmeans(specnorm,k,nstart=100)$cluster
 for ( i in 1:k){
 tau[,i]<-ifelse(specm==i,(1-0.01*k),0.01)
 }
@@ -360,7 +360,7 @@ specmat<-eigen(usum)$vectors[,1:k]
   rownorm<-apply(specmat,1,function(a){(sum(a^2))^0.5})
   rownorm<-ifelse(rownorm < 10^(-06),10^(-06),rownorm)
 specnorm<-specmat/rownorm
-  specm<-kmeans(specnorm,k,nstart=5)$cluster
+  specm<-kmeans(specnorm,k,nstart=100)$cluster
 for ( i in 1:k){
 ustar[,i]<-ifelse(specm==i,(1-0.01*k),0.01)
 }

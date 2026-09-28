@@ -16,7 +16,7 @@ from scipy.sparse import diags
 # ---------------- frost ----------------
 # -----------------------------------------------
 
-def mfrost_sharedZ(X_list, r, numTrials=3, maxiter=50, delta=1e-6, time_limit=300, init_method='USENC',
+def mfrost_sharedZ(X_list, r, numTrials=3, maxiter=50, delta=1e-5, time_limit=300, init_method='USENC',
                      init_partition=None, verbosity=0, init_seed=None, convergence_test=False):
     """
     Heuristic algorithm for multilayer community detection via joint nonnegative matrix trifactorization.
@@ -77,7 +77,7 @@ def mfrost_sharedZ(X_list, r, numTrials=3, maxiter=50, delta=1e-6, time_limit=30
          S_best : ndarray of shape (L, r, r)
              Layer-specific community interaction matrices S_l.
          error_best : float
-             Relative error ||X - ZSZ'||_F / ||X||_F.
+             Relative error sqrt( sum_l ||X_l - Z_l S_l Z_l'||^2_F / (sum_l ||X_l||_F^2)).
         
      """
     
