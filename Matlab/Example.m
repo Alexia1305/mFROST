@@ -13,6 +13,11 @@ L=numel(A_list);
 % OUTPUT: v a vector giving the community of each node
 [w,v,S,erreur,  ~,~] = mfrost(A_list,r,'verbosity',1);
 
+% NMI only nodes with labels 
+idx = find(~isnan(labels))
+disp("NMI:")
+disp(nmi(labels(idx),v(idx)))
+
 
 %% Plot the multilayer network 
 L = numel(A_list);

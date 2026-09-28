@@ -8,7 +8,7 @@ for network= ["AUCS","Cora","Citeseer","Caltech"]
     fprintf("Network: %s\n", network);
    
    
-    rng(2);
+    rng(1);
     filename = fullfile("data", network + ".mat");
     data = load(filename);
 
@@ -36,7 +36,7 @@ for network= ["AUCS","Cora","Citeseer","Caltech"]
     %mFROST 
 	[w,v,S,erreur,  ~,~] = mfrost(Adj_list,r,'verbosity',1);
 	
-	nmi= nmi(labels(labelled),v(labelled))
+	nmi_score= nmi(labels(labelled),v(labelled))
 
 end 
 

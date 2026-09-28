@@ -1,8 +1,8 @@
 %  Heuristic algorithm for multilayer community detection via joint nonnegative matrix trifactorization.
 % Estimates nonnegative matrices S_l>=0 and Z_l>=0 that minimize:
-% 
+%
 %     sum_{l=1..L} ||X_l-Z_l S_l Z_l^T||_F^T
-% 
+%
 % subject to the constraints:
 %     Z_l = D_l V
 %     Z_l^T Z_l = I
@@ -14,21 +14,21 @@
 % - Z_l is a nonnegative orthogonal matrix encoding community memberships
 % - D_l is a diagonal scaling matrix specific to layer l
 % - V is a shared binary community assignment matrix across all layers
-% 
+%
 % Notes
 % -----
 % The matrices Z_l=D_l V are not stored explicitly but represented with:
-% 
+%
 % - v : ndarray of shape (n,) — layer-independent community assignments defining V,
 %   where v[i] is the community index of node i.
-% 
+%
 % - w : ndarray of shape (L, n) — layer-dependent diagonal values defining D_l,
 %   where w[l, i] is the scaling factor for node i in layer l.
-% 
+%
 % Thus, each row i of Z_l has a single nonzero element:
-% 
+%
 %     Z_l[i, v[i]] = w[l, i]
-% 
+%
 % The vector v is shared across layers, while w is layer-dependent.
 %
 % INPUTS
@@ -45,15 +45,14 @@
 %   init: Initialization method for Z
 %         Options: 'random', 'USENC' (default)
 %   maxiter: Maximum number of iterations per trial
-%            Default: 100
+%            Default: 50
 %   delta: Convergence tolerance
-%          Default: 1e-6
+%          Default: 1e-5
 %          (Stop if the change in error between iterations is < delta or if error < delta)
 %   time_limit: Time limit for a trial in seconds
 %               Default: Inf
 %   verbosity: Display messages (1) or not (0)
 %              Default: 1
-
 %
 % OUTPUTS
 %
@@ -61,16 +60,14 @@
 %           in the i-th row of Z
 %   v_best: Vector of length n; v(i) gives the index of the column of Z
 %           corresponding to the non-zero element in the i-th row
-%   S_best: Central matrix of size r x r 
-%   error_best: Relative error ||X-ZSZ||_F/||X||_F
+%   S_best: Central matrix of size r x r
+%   error_best: Relative error sqrt(sum_l ||X_l-Z_l S_l Z_l^T||_F^2/sum_l ||X_l||_F^2)
 %   time_global: Total Runtime
 %   time_iteration: time_iteration{t}{i} time of iteration i in trial t
 %
 % This code is a supplementary material to the paper
-%  TOCOMPLETE 
-
+%  TOCOMPLETE
 function [w_best,v_best,S_best,error_best,time_global,time_iteration] = mfrost(X_list,r,varargin)
-
 if nargin <= 2
     options = [];
 else
@@ -78,44 +75,57 @@ else
         options.(varargin{k}) = varargin{k+1};
     end
 end
-% Default Value 
+% Default Value
 if ~isfield(options, 'numTrials')
     options.numTrials = 10;
 end
 if ~isfield(options, 'time_limit')
     options.time_limit = Inf;
-end 
+end
 if ~isfield(options, 'delta')
-    options.delta = 1e-6;
-end 
+    options.delta = 1e-5;
+end
 if ~isfield(options, 'maxiter')
-    options.maxiter = 100;
-end 
+    options.maxiter = 50;
+end
 if ~isfield(options, 'verbosity')
     options.verbosity = 1;
-end 
+end
 time_iteration = {};
 start = tic;
-error_best = 'inf';
-
-
+error_best = Inf;
  if options.verbosity > 0
         fprintf('Running %u Trials in Series \n', options.numTrials);
  end
- 
-% PRECOMPUTATION 
+% PRECOMPUTATION
 L = numel(X_list);
 n = size(X_list{1},1);
-
-
 I = cell(L, 1);
 J = cell(L, 1);
 VAL = cell(L, 1);
-
 for l = 1:L
     [I{l}, J{l}, VAL{l}] = find(X_list{l});
 end
-
+% Cache X(i,:) without its diagonal once, for all iterations and trials.
+cols_all = cell(L,n);
+xip_all = cell(L,n);
+dgX = zeros(L,n);
+for l = 1:L
+    X = X_list{l};
+    dgX(l,:) = full(diag(X)).';
+    [cols, rows, vals] = find(X.');
+    mask = cols ~= rows;
+    cols = cols(mask);
+    rows = rows(mask);
+    vals = vals(mask);
+    counts = accumarray(rows, ones(size(rows)), [n,1], @sum, 0);
+    row_start = [1; cumsum(counts)+1];
+    for i = 1:n
+        idx = row_start(i):row_start(i+1)-1;
+        cols_all{l,i} = reshape(cols(idx),1,[]);
+        xip_all{l,i} = vals(idx);
+    end
+end
 normX = zeros(L, 1);
 normX2 = zeros(L, 1);
 for l = 1:L
@@ -123,14 +133,10 @@ for l = 1:L
     normX2(l)=normX(l)^2;
 end
 degrees = zeros(L, n);
-
 for l = 1:L
     degrees(l, :) = sum(X_list{l}, 1);
 end
- 
- 
 for trials = 1:options.numTrials
-    
     %INITIALISATION
     time = {};
     w = zeros(L,n);
@@ -140,167 +146,128 @@ for trials = 1:options.numTrials
         init_algo = options.init;
     else
         init_algo = "USENC";
-    end 
+    end
     if init_algo == "random"
         for i = 1:n
            v = [1:r, randi(r,1,n-r)];
            v = v(randperm(n));
-        end 
-        
+        end
     elseif init_algo == "USENC"
         % Community detection in ecah layer with SVCA then concensus with
         % USENC
-        v_l = zeros(L,n); % to store the communities in each layer 
-        % Community detection in each layer with SVCA 
+        v_l = zeros(L,n); % to store the communities in each layer
+        % Community detection in each layer with SVCA
         for l = 1:L
            v_l(l,:) = community_detection_SVCA(X_list{l},r);
         end
-        
-        % censencus with USENC 
+        % censencus with USENC
         v = USENC(v_l,r);
-        
-        
-    end 
-    % w set proportionnal to node degrees in each layer 
+    end
+    % w set proportionnal to node degrees in each layer
     for l = 1:L
         d_r = accumarray(v(:), degrees(l, :)', [r, 1], @sum, 0);
-    
         denominator = d_r(v);
-    
         w(l, :) = 0;
         idx = denominator ~= 0;
         w(l, idx) = degrees(l, idx) ./ denominator(idx)';
-     end 
-    
-    % Normalization of wl 
+     end
+    % Normalization of wl
     for l = 1:L
         colNorm = sqrt(accumarray(v(:),w(l,:).^2,[r 1],@sum,0));
         denom = colNorm(v).';
         mask = denom ~= 0;
         w(l,mask) = w(l,mask)./denom(mask);
         w(l,~mask) = 0;
-    end 
+    end
     % Construction of Sl
     for l = 1:L
         [i, j, val] = deal(I{l}, J{l}, VAL{l});
-
         rows   = v(i(:));
         cols   = v(j(:));
         values = w(l,i(:)).' .* w(l,j(:)).' .* val(:);
-
         S(l,:,:) = accumarray([rows(:),cols(:)], values(:), [r,r], @sum, 0);
-    
-
-    end 
-    % UPDATE error 
+    end
+    % UPDATE error
     error_pre=0;
     for l=1:L
         error_pre = error_pre + 1e-9+normX2(l)-norm(S(l,:,:),'fro')^2;
-    end 
+    end
     error_pre = sqrt(error_pre / sum(normX.^2));
     error = error_pre;
-
-    
-    
     for itt = 1:options.maxiter
         start_it = tic;
-        
         if toc(start) > options.time_limit
             disp('Time limit passed');
             break;
         end
-        
         % Precomputation
         p  = zeros(L,r);
         S2 = S.^2;
-        for l=1:L
-            for k = 1:r
-                p(l,k) = sum(w(l,:).^2 .* S2(l,v,k));
-            end
-        end
         dgS=zeros(L,r);
+        S_layers = cell(L,1);
         for l=1:L
-            S_l = squeeze(S(l,:,:));
-            dgS(l,:) = diag(S_l);
-        end 
-
+            S_l = reshape(S(l,:,:),r,r);
+            S_layers{l} = S_l;
+            dgS(l,:) = diag(S_l).';
+            % Sum squared weights by community before multiplying by S2.
+            colNorm2 = accumarray(v(:), (w(l,:).^2).', [r,1], @sum, 0);
+            p(l,:) = colNorm2.' * reshape(S2(l,:,:),r,r);
+        end
+        c3 = 4*dgS.^2;
+        b=zeros(L,r);
+        c=zeros(L,r);
+        old_part=zeros(L,r);
         % UPDATE Z
-
         for i = randperm(n)
-            % compute the coefficients for the L times r problems 
-            b=zeros(L,r);
-            c=zeros(L,r);
+            % compute the coefficients for the L times r problems
             for l=1:L
-                X = X_list{l};
-                S_l = squeeze(S(l,:,:));
+                S_l = S_layers{l};
+                old_part(l,:) = (w(l,i)*S_l(v(i),:)).^2;
                 % b coefficients of the r problems  min_x ax^4+bx^2+cx
-                b(l,:) = 2*(p(l,:)-(w(l,i)*S_l(v(i),:)).^2)-2*X(i,i)*dgS(l,:); % O(r)
-    
+                b(l,:) = 2*(p(l,:)-old_part(l,:))-2*dgX(l,i)*dgS(l,:); % O(r)
                 % c coefficients of the r problems  min_x ax^4+bx^2+cx
-                [~, cols, vals] = find(X(i, :));
-                mask = cols ~= i;
-                cols_i = cols(mask);                % indices nonzeros de X(i,:) without i !
-                xip    = vals(mask);                %  X values for non zeros entries indices X(i,:) without i !
+                cols_i = cols_all{l,i};             % indices nonzeros de X(i,:) without i !
+                xip    = xip_all{l,i};              %  X values for non zeros entries indices X(i,:) without i !
                 c(l,:)      = -4 * ( (xip(:)'.*w(l,cols_i)) * S_l( v(cols_i) , : ) );   % O( nnz dans X(i,:) )
-            end 
-            % Solve r problems  min_x ax^4+bx^2+cx
-            best_f = inf; best_x=zeros(L) ; best_k = 1;
-            x=zeros(L,1);
-            for k = 1:r
-                f=0;
-                for l=1:L
-                    if degrees(l,i) == 0
-                        x(l) = 0;
-                        fl = 0;
-                    else
-                        [x(l),fl] = cardan_depressed(4*S2(l,k,k),2*b(l,k),c(l,k),0);
-                    end 
-                    f=f+fl;
-                    
-                end 
-                if f < best_f
-                    best_f = f; best_x = x; best_k = k;
-                end
             end
-
+            % Solve r problems  min_x ax^4+bx^2+cx
+            [x,f] = cardan_depressed_batch(c3,2*b,c,0);
+            mask = degrees(:,i) == 0;
+            x(mask,:) = 0;
+            f(mask,:) = 0;
+            [best_f,best_k] = min(sum(f,1));
+            best_x = x(:,best_k);
             % Update of p before updating w(i) (O(r))
             for l=1:L
-                S_l = squeeze(S(l,:,:));
-                p(l,:) = p(l,:) - (w(l,i)*S_l(v(i),:)).^2 + (best_x(l)*S_l(best_k,:)).^2;
-            end 
+                S_l = S_layers{l};
+                p(l,:) = p(l,:) - old_part(l,:) + (best_x(l)*S_l(best_k,:)).^2;
+            end
             % Update w(i)
             w(:,i) = best_x;
             v(i) = best_k;
         end
-
-        % Normalization of wl 
+        % Normalization of wl
         for l = 1:L
             colNorm = sqrt(accumarray(v(:),w(l,:).^2,[r 1],@sum,0));
             denom = colNorm(v).';
             mask = denom ~= 0;
             w(l,mask) = w(l,mask)./denom(mask);
             w(l,~mask) = 0;
-        end 
-
+        end
         % Construction of Sl
         for l = 1:L
             [i, j, val] = deal(I{l}, J{l}, VAL{l});
-    
             rows   = v(i(:));
             cols   = v(j(:));
             values = w(l,i(:)).' .* w(l,j(:)).' .* val(:);
-    
             S(l,:,:) = accumarray([rows(:),cols(:)], values(:), [r,r], @sum, 0);
-        
-    
-        end 
-    
+        end
         error_pre = error;
-        % UPDATE error 
+        % UPDATE error
         error=0;
         for l=1:L
             error = error + 1e-9+normX2(l)-norm(S(l,:,:),'fro')^2;
-        end 
+        end
         error = sqrt(error / sum(normX.^2));
         time{end+1} = toc(start_it);
         if error < options.delta
@@ -310,10 +277,8 @@ for trials = 1:options.numTrials
             break;
         end
     end
-
     time_iteration{end+1} = time;
     time_global = toc(start);
-
     if error<=error_best
         w_best = w;
         v_best = v;
@@ -321,34 +286,29 @@ for trials = 1:options.numTrials
         error_best = error;
         if error_best <= options.delta
             break;
-        end 
+        end
          if toc(start) > options.time_limit
             if options.verbosity > 0
                 fprintf('Time_limit reached \n')
-            end 
+            end
             break;
         end
-    end 
+    end
     if options.verbosity > 0
         if itt == options.maxiter
                 fprintf('Not converged \n')
-        end 
+        end
         fprintf('Trial %u of %u with %s : %2.4e | Best: %2.4e \n',...
             trials, options.numTrials, init_algo, error, error_best);
-            
     end
-    
-end 
 end
-
+end
 function [x_opt,f_opt] = cardan_depressed(c3,c1,c0,default_x)
 % find x that min c3/4*x^4+c1/2*x^2+c0*x and x>0
 % default value otherwise
-% solve by cardano formula 
-
+% solve by cardano formula
     x_opt=default_x;
     f_opt=(c3/4)*(x_opt^4)+(c1/2)*(x_opt^2)+c0*x_opt;
-
     if abs(c3)<1e-12
         if abs(c1)>1e-12
             x = -c0/c1;
@@ -359,18 +319,13 @@ function [x_opt,f_opt] = cardan_depressed(c3,c1,c0,default_x)
                     f_opt=f;
                 end
             end
-
-            
-        end 
+        end
     else
-
         %Si c2=0
         np=c1/c3;
         nq=c0/c3;
-
         Delta = 4*np^3+27*nq^2;
         d     = 0.5*(-nq+sqrt(Delta/27));
-
         % For values where Delta is <= 0
         if Delta <=0 %-> 3 solutions réelles distinctes ou une solution multiple mais toutes réelles
             r3        = 2*(abs(d)^(1/3)); %racine cubique du module de d multipliée par 2
@@ -385,14 +340,7 @@ function [x_opt,f_opt] = cardan_depressed(c3,c1,c0,default_x)
                     x_opt=x_s;
                     f_opt=f_s;
                 end
-
-
-                
-            end 
-            
-
-
-
+            end
         else
             d2pos     = 0.5*(-nq-sqrt(Delta/27));
             x      = sign(d)*(abs(d))^(1/3) + sign(d2pos)*(abs(d2pos))^(1/3);
@@ -406,7 +354,56 @@ function [x_opt,f_opt] = cardan_depressed(c3,c1,c0,default_x)
         end
     end
 end
+function [x_opt,f_opt] = cardan_depressed_batch(c3,c1,c0,default_x)
+% Vectorized cardan_depressed for this algorithm: c3>=0 and c0<=0.
+% With c3>0,c0<0, only one stationary root is positive.
+% Keep the original 1e-12 threshold and comparison with default_x.
+    x_opt = default_x*ones(size(c3));
+    f_opt = (c3/4).*x_opt.^4 + (c1/2).*x_opt.^2 + c0.*x_opt;
+    x = zeros(size(c3));
 
+    linear = abs(c3)<1e-12;
+    mask = linear & abs(c1)>1e-12;
+    x(mask) = -c0(mask)./c1(mask);
+
+    mask = ~linear & c0==0 & c1<0;
+    x(mask) = sqrt(-c1(mask)./c3(mask));
+
+    mask = ~linear & c0<0;
+    if any(mask(:))
+        np = c1(mask)./c3(mask);
+        nq = c0(mask)./c3(mask);
+        Delta = (nq/2).^2 + (np/3).^3;
+        x_s = zeros(size(np));
+
+        idx = Delta>=0;
+        if any(idx(:))
+            d = (-nq(idx)/2 + sqrt(Delta(idx))).^(1/3);
+            d2pos = -np(idx)./(3*d);
+            x_pos = d + d2pos;
+            % Avoid cancellation when the positive root is small.
+            stable = np(idx)>0;
+            q = nq(idx);
+            x_pos(stable) = -q(stable)./(d(stable).^2 ...
+                - d(stable).*d2pos(stable) + d2pos(stable).^2);
+            x_s(idx) = x_pos;
+        end
+
+        idx = Delta<0;
+        if any(idx(:))
+            r3 = 2*sqrt(-np(idx)/3);
+            th3 = acos(min(1,max(-1,(-nq(idx)/2) ...
+                ./sqrt(-(np(idx)/3).^3))))/3;
+            x_s(idx) = r3.*cos(th3);
+        end
+        x(mask) = x_s;
+    end
+
+    f = (c3/4).*x.^4 + (c1/2).*x.^2 + c0.*x;
+    mask = x>0 & f<f_opt;
+    x_opt(mask) = x(mask);
+    f_opt(mask) = f(mask);
+end
 function [v] = community_detection_SVCA(X,r)
     [n,~] = size(X);
     % Estimation of ZO=ZS by SSPA
@@ -421,8 +418,5 @@ function [v] = community_detection_SVCA(X,r)
     % Compute v and w given Z
     v = max ((Z ~= 0).*(1:r),[],2);
     zero_idx = find(v == 0);
-    v(zero_idx) = randi(r, size(zero_idx)); 
-  
+    v(zero_idx) = randi(r, size(zero_idx));
 end
-
-
