@@ -6,6 +6,7 @@ from mfrost import mfrost
 import matplotlib.pyplot as plt
 import json
 from pathlib import Path
+import csv
 
 
 def build_AUCS(edge_file, node_file):
@@ -54,6 +55,100 @@ def build_AUCS(edge_file, node_file):
     return {
         "A": adjacency_list,
         "labels": groups
+    }
+
+def read_highschool2011(contact_file, metadata_file):
+    contacts = pd.read_csv(
+        contact_file,
+        sep=r"\s+",
+        header=None,
+        names=["time", "id1", "id2", "class1", "class2"],
+        dtype={
+            "time": float,
+            "id1": str,
+            "id2": str,
+            "class1": str,
+            "class2": str,
+        },
+        quoting=csv.QUOTE_NONE,
+        keep_default_na=False,
+        na_values=["NA"],
+    )
+
+    metadata = pd.read_csv(
+        metadata_file,
+        sep=r"\s+",
+        header=None,
+        names=["id", "class", "gender"],
+        dtype=str,
+        quoting=csv.QUOTE_NONE,
+        keep_default_na=False,
+        na_values=["NA"],
+    )
+
+    if contacts.empty or metadata.empty:
+        raise ValueError("Les fichiers ne doivent pas être vides.")
+
+    if not np.isfinite(contacts["time"].to_numpy()).all():
+        raise ValueError("Les timestamps doivent être finis.")
+
+    if metadata["id"].duplicated().any():
+        raise ValueError("Les identifiants des métadonnées doivent être uniques.")
+
+    if metadata[["id", "class"]].isna().any().any():
+        raise ValueError("Les identifiants et classes ne doivent pas être manquants.")
+
+ 
+    node_ids = metadata["id"].to_numpy()
+    n = len(node_ids)
+    node_index = pd.Index(node_ids)
+
+    i = node_index.get_indexer(contacts["id1"])
+    j = node_index.get_indexer(contacts["id2"])
+
+    if (i < 0).any() or (j < 0).any():
+        raise ValueError(
+            "Certains nœuds des contacts sont absents des métadonnées."
+        )
+
+    timestamps = pd.to_datetime(
+        contacts["time"], unit="s", origin="unix", utc=True
+    ).dt.tz_convert("Europe/Paris")
+
+    contact_days = timestamps.dt.strftime("%Y-%m-%d").to_numpy()
+    days = sorted(np.unique(contact_days))
+
+
+    Adj_list = []
+
+    for day in days:
+        mask = (contact_days == day) & (i != j)
+        rows = np.concatenate([i[mask], j[mask]])
+        cols = np.concatenate([j[mask], i[mask]])
+
+        A = coo_matrix(
+            (np.ones(len(rows), dtype=float), (rows, cols)),
+            shape=(n, n),
+        ).tocsr()
+
+
+        A.data.fill(1.0)
+        Adj_list.append(A)
+
+    node_classes = metadata["class"].str.strip()
+    is_teacher = node_classes.str.lower().isin(["teacher", "teachers"])
+    node_classes = node_classes.mask(is_teacher, "teacher")
+
+    classes = sorted(node_classes.unique())
+    class_to_label = {
+        class_name: label
+        for label, class_name in enumerate(classes, start=1)
+    }
+    labels = node_classes.map(class_to_label).to_numpy(dtype=int)
+
+    return {
+        "A": Adj_list,
+        "labels": labels
     }
 
 def build_cora_multilayer(content_path, cites_path, k=20):
@@ -188,126 +283,7 @@ def build_cora_multilayer(content_path, cites_path, k=20):
         "A": A,
         "labels": labels,
     }
-
-def build_citeseer_multilayer(content_path, cites_path, k=20):
-
-   
-    # Load content file
-   
-    content = pd.read_csv(
-        content_path,
-        sep=r"\s+",
-        header=None
-    )
-
-    paper_id = content.iloc[:, 0].astype(str).values
-    labels_raw = content.iloc[:, -1].values
-
-    X = content.iloc[:, 1:-1].to_numpy(dtype=float)
-
-    classes=["Agents","AI", "DB", "IR", "ML", "HCI"]
-
-    # Convert labels to 1..3
-    label_mapping = {
-        class_name: i + 1
-        for i, class_name in enumerate(classes)
-    }
-
-    labels = np.array([
-        label_mapping[label]
-        for label in labels_raw
-    ])
-    labels = labels.tolist()
-
-    n = len(paper_id)
-
-   
-    # CITATION LAYER
-   
-    cites = pd.read_csv(
-        cites_path,
-        sep=r"\s+",
-        header=None,
-        names=["cited", "citing"]
-    )
-
-    cites["cited"] = cites["cited"].astype(str)
-    cites["citing"] = cites["citing"].astype(str)
-
-    # Initialize adjacency matrix
-    adj_citation = np.zeros((n, n), dtype=int)
-
-    # Mapping paper IDs -> matrix indices
-    paper_to_idx = {
-        paper: i
-        for i, paper in enumerate(paper_id)
-    }
-
-    # Filter edges to kept nodes
-    cites = cites[
-        cites["citing"].isin(paper_to_idx)
-        & cites["cited"].isin(paper_to_idx)
-    ]
-
-    # Add citation edges
-    for _, row in cites.iterrows():
-
-        citing_idx = paper_to_idx[row["citing"]]
-        cited_idx = paper_to_idx[row["cited"]]
-    
-        adj_citation[citing_idx, cited_idx] = 1
-        adj_citation[cited_idx, citing_idx] = 1
-
-   
-    # SIMILARITY LAYER
-   
-
-    # Row-wise L2 norm
-    norm_X = np.sqrt(np.sum(X**2, axis=1))
-
-    # Avoid division by zero
-    norm_X[norm_X == 0] = 1
-
-    X_norm = X / norm_X[:, None]
-
-    # Cosine similarity
-    sim = X_norm @ X_norm.T
-
-    # Remove self-similarity
-    np.fill_diagonal(sim, 0)
-
-   
-    #  kNN GRAPH
-   
-    adj_similarity = np.zeros((n, n), dtype=int)
-
-    for i in range(n):
-
-        # Same logic as:
-        # order(sim[i, ], decreasing = TRUE)[1:min(k, n)]
-        top_k = np.argsort(sim[i])[::-1][:min(k, n)]
-
-        adj_similarity[i, top_k] = 1
-
-    # Symmetrize
-    adj_similarity = np.maximum(
-        adj_similarity,
-        adj_similarity.T
-    )
-
-    # Remove diagonal just in case
-    np.fill_diagonal(adj_similarity, 0)
-
-    A = [
-        adj_citation,
-        adj_similarity
-    ]
-
-    return {
-        "A": A,
-        "labels": labels,
-    }
-
+ 
 def build_caltech(labels_file, edges_file):
     
     #  Read labels 
@@ -420,9 +396,9 @@ def test_scalability(A_list,r,labels):
 
 if __name__ == "__main__":
 
-    data = build_caltech("../Data/caltech_all/labels.txt", "../Data/caltech_all/edges.txt")
+    #data = build_caltech("../Data/caltech_all/labels.txt", "../Data/caltech_all/edges.txt")
     #data= build_cora_multilayer("../Data/cora/cora.content","../Data/cora/cora.cites",k=20)
-    #data= build_citeseer_multilayer("../Data/citeseer/citeseer.content","../Data/citeseer/citeseer.cites",k=20)
+    data = read_highschool2011("../Data/HighSchool/thiers_2011.csv","../Data/HighSchool/highschool_2011_metadata.txt")
     #data=build_AUCS("../Data/AUCS/aucs_edgelist.txt","../Data/AUCS/aucs_nodelist.txt")
     labels = np.array(data["labels"])
     A_list = data["A"]

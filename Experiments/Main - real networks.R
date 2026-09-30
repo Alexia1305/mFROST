@@ -13,6 +13,150 @@ library(multinet)
 
 ####################### Load DATA ##########################################################
 
+
+read_highschool2011 <- function(contact_file, metadata_file) {
+
+  contacts <- read.table(
+    contact_file, header = FALSE,
+    colClasses = c("numeric", rep("character", 4)),
+    comment.char = "", quote = ""
+  )
+  names(contacts) <- c("time", "id1", "id2", "class1", "class2")
+
+  metadata <- read.table(
+    metadata_file, header = FALSE,
+    colClasses = "character",
+    comment.char = "", quote = ""
+  )
+  names(metadata) <- c("id", "class", "gender")
+
+  stopifnot(
+    nrow(contacts) > 0L,
+    nrow(metadata) > 0L,
+    all(is.finite(contacts$time)),
+    !anyDuplicated(metadata$id),
+    !anyNA(metadata$id),
+    !anyNA(metadata$class)
+  )
+
+  # Tous les nœuds, enseignants compris
+  node_ids <- metadata$id
+  n <- length(node_ids)
+
+  contacts$i <- match(contacts$id1, node_ids)
+  contacts$j <- match(contacts$id2, node_ids)
+
+  if (anyNA(contacts$i) || anyNA(contacts$j)) {
+    stop("Certains nœuds des contacts sont absents des métadonnées.")
+  }
+
+  # Même découpage temporel que dans ton code
+  timestamps <- as.POSIXct(
+    contacts$time,
+    origin = "1970-01-01",
+    tz = "Europe/Paris"
+  )
+  contacts$day <- format(
+    timestamps, "%Y-%m-%d", tz = "Europe/Paris"
+  )
+  days <- sort(unique(contacts$day))
+
+  # Une matrice creuse, symétrique et binaire par journée
+  Adj_list <- lapply(days, function(day) {
+
+    e <- contacts[
+      contacts$day == day & contacts$i != contacts$j,
+      , drop = FALSE
+    ]
+
+    A <- Matrix::sparseMatrix(
+      i = c(e$i, e$j),
+      j = c(e$j, e$i),
+      x = rep(1, 2L * nrow(e)),
+      dims = c(n, n)
+    )
+
+    if (length(A@x) > 0L) A@x[] <- 1
+    A
+  })
+
+  names(Adj_list) <- NULL
+
+  # Labels alignés sur les matrices, y compris la classe teacher
+  metadata$class <- trimws(metadata$class)
+  is_teacher <- tolower(metadata$class) %in% c("teacher", "teachers")
+  metadata$class[is_teacher] <- "teacher"
+
+  classes <- sort(unique(metadata$class))
+  labels <- match(metadata$class, classes)
+
+  list(
+    A = Adj_list,
+    labels = labels,
+    node_ids = node_ids,
+    r = length(classes),
+    label_mapping = data.frame(
+      label = seq_along(classes),
+      class = classes
+    )
+  )
+}
+
+
+mltplx_from_mat <- function(filename, net_name) {
+    D <- R.matlab::readMat(filename, fixNames = FALSE)
+    net_name <- tolower(net_name)
+
+    if (net_name == "cora") {
+        message("### Loading CoRA file...")
+
+        # A est un tableau n × n × L
+        Nets <- lapply(seq_len(dim(D$A)[3]), function(l) {
+            A <-D$A[, , l]
+            pmax(A, 0)
+        })
+
+      
+
+        ground_idx <- as.vector(D$C)
+
+    } else if (net_name == "mit") {
+        message("### Loading MIT file...")
+
+        Nets <- list(
+            D$celltower_graph,
+            D$phone_graph,
+            D$bt_graph
+        )
+
+        ground_idx <- integer(nrow(Nets[[1]]))
+
+        # C est une cellule MATLAB contenant les indices par communauté
+        communities <- as.vector(D$C, mode = "list")
+
+        for (k in seq_along(communities)) {
+            idx <- as.integer(unlist(communities[[k]]))
+            ground_idx[idx] <- k
+        }
+
+    } else {
+        stop("Réseau non reconnu : ", net_name)
+    }
+    Nets <- lapply(Nets, function(A) {
+    if (any(!is.finite(A))) {
+        stop("La matrice contient des valeurs NA, NaN ou Inf.")
+    }
+
+    A <- 1.0 * (A > 0)
+    diag(A) <- 0
+    dimnames(A) <- NULL
+
+    Matrix::Matrix(A, sparse = TRUE)
+})
+
+
+    list(A = Nets, labels = ground_idx)
+}
 build_AUCS <- function(edge_file, node_file){
 
 
@@ -64,7 +208,7 @@ build_AUCS <- function(edge_file, node_file){
     }
     
     
-    adjacency_list[[layer_name]] <- A
+    adjacency_list[[layer_name]] <- unname(A)
   }
   names(adjacency_list) <- NULL
 
@@ -154,7 +298,7 @@ adj_citation[cbind(cites$cited, cites$citing)] <- 1
   
   for (i in 1:n) {
     top_k <- order(sim[i, ], decreasing = TRUE)[1:min(k, n)]
-    adj_similarity[i, top_k] <- 1
+    adj_similarity[i, top_k] <-1
   }
   
   # symmetrize
@@ -164,97 +308,8 @@ adj_citation[cbind(cites$cited, cites$citing)] <- 1
   # RETURN
 
     A <- list(
-  adj_citation,
-  adj_similarity)
-  return(list(
-    A = A ,
-    labels           = labels
-  ))
-}
-
-build_citeseer_multilayer <- function(content_path, cites_path, k = 20) {
-  
-
-  # Load content file
-  content <- read.table(content_path,
-                        header = FALSE,
-                        stringsAsFactors = FALSE)
-  
-  paper_id <- content[, 1]
-  labels_raw <- content[, ncol(content)]
-  
-  X <- as.matrix(content[, 2:(ncol(content) - 1)])
-  rownames(X) <- paper_id
-  
-  classes <- c(
-    "Agents",
-			"AI",
-			"DB",
-			"IR",
-			"ML",
-			"HCI"
-  )
-  # convert labels to 1..3
-  labels <- match(labels_raw, classes)
-  
-  n <- length(paper_id)
-  
-
-  # CITATION LAYER
-
-  cites <- read.table(cites_path,
-                      header = FALSE,
-                      stringsAsFactors = FALSE)
-  
-  colnames(cites) <- c("cited", "citing")
-  
-  # filter edges to kept nodes
-paper_id <- as.character(paper_id)
-cites$citing <- as.character(cites$citing)
-cites$cited <- as.character(cites$cited)
-
-adj_citation <- matrix(0, n, n,
-                       dimnames = list(paper_id, paper_id))
-
-valid <- cites$citing %in% paper_id &
-         cites$cited %in% paper_id
-
-cites <- cites[valid, ]
-
-adj_citation[cbind(cites$citing, cites$cited)] <- 1
-adj_citation[cbind(cites$cited, cites$citing)] <- 1
-
-  #  SIMILARITY LAYER
-
-  norm_X <- sqrt(rowSums(X^2))
-  norm_X[norm_X == 0] <- 1  # avoid division by zero
-  
-  X_norm <- X / norm_X
-  
-  sim <- X_norm %*% t(X_norm)
-  diag(sim) <- 0
-
-  # kNN GRAPH
-
-  adj_similarity <- matrix(0, n, n)
-  rownames(adj_similarity) <- paper_id
-  colnames(adj_similarity) <- paper_id
-  
-  for (i in 1:n) {
-    top_k <- order(sim[i, ], decreasing = TRUE)[1:min(k, n)]
-    adj_similarity[i, top_k] <- 1
-  }
-  
-  # symmetrize
-   adj_similarity <- pmax( adj_similarity, t( adj_similarity))
-  
- 
-  # RETURN
-
-
-  A <- list(
-  adj_citation,
-  adj_similarity)
+  unname(adj_citation),
+  unname(adj_similarity))
   return(list(
     A = A ,
     labels           = labels
@@ -318,15 +373,17 @@ build_caltech <- function(labels_file, edges_file) {
   )
 }
 
+
+
 ##################### Methods #############################################################
 run_all_methods <- function(Adj_list, truecoms, dataset,
-                            numTrials = 2L, seed = 8L,
+                            numTrials = 10L, seed = 8L,
                             output_dir = "results") {
   # only keep the known labels for AUCS 
   idx <- !is.na(truecoms)
   K <- length(unique(truecoms[idx]))
 
-  methods <- c("graph-tool", "mfrost", "dcmase", "ave_spherical","sq-bias-adjusted", "mase-spherical","csnmtf","lmfo")
+  methods <- c( "graph-tool","mfrost", "dcmase", "ave_spherical","sq-bias-adjusted", "mase-spherical","csnmtf","lmfo")
  
   results <- lapply(methods, function(method) {
     message("Method: ", method)
@@ -598,14 +655,12 @@ multilayer_properties <- function(adj_list) {
 
 ######################################## RESULTS ############################
 
-#data <- build_cora_multilayer("Data/cora/cora.content", "Data/cora/cora.cites")
-#data <- build_citeseer_multilayer("Data/citeseer/citeseer.content", "Data/citeseer/citeseer.cites")
-data <- build_AUCS("Data/AUCS/aucs_edgelist.txt","Data/AUCS/aucs_nodelist.txt")
+data <- build_cora_multilayer("Data/cora/cora.content", "Data/cora/cora.cites")
+#data <- build_AUCS("Data/AUCS/aucs_edgelist.txt","Data/AUCS/aucs_nodelist.txt")
 #data <- build_caltech("Data/caltech_all/labels.txt","Data/caltech_all/edges.txt")
-
-
+#data <- read_highschool2011("Data/HighSchool/thiers_2011.csv","Data/HighSchool/highschool_2011_metadata.txt")
 #properties <- multilayer_properties(data$A)
-results<-run_all_methods(data$A,data$labels,"AUCS")
+results<-run_all_methods(data$A,data$labels,"Cora")
 # Tableau récapitulatif
 print(results$summary)
 
